@@ -12,6 +12,7 @@ Everything the skill does is the same for every language, except what is in the 
 |---|---|---|
 | `code`, `name`, `native` | the language code, its English name (used in labels such as "Play German example" and "Build the Spanish sentence") and its own name | `de`, German, Deutsch |
 | `voice` | the neural voice for the target language | `de-DE-KatjaNeural` |
+| `narrator` | optional: `{"voice", "rate"}` of the voice that explains grammar in both languages, a multilingual one (`edge-tts --list-voices`, "Multilingual" in its name), so one person speaks the target language and English; `rate` a little slower | `de-DE-SeraphinaMultilingualNeural`, `-10%` |
 | `sections` | the sheet's section names, also spoken as section titles: `vocabulary`, `grammar`, `redemittel`, `story` | Wortschatz, Grammatik, Redemittel, Geschichte |
 | `translation` | the label that unfolds a story paragraph's translation | Übersetzung |
 | `articles` | the articles a noun card can carry; `[]` for a language without articles (then nouns need none and the app has no article game) | der, die, das |
@@ -22,7 +23,7 @@ Everything the skill does is the same for every language, except what is in the 
 | `verb_hint` | optional: a pattern the forms of every verb card should match, and the review note when one does not | the Perfekt (`hat/ist`) |
 | `direction` | optional, default `ltr`: `rtl` for a language written right to left (Arabic, Hebrew) | (ltr) |
 | `spaces` | optional, default true: false for a language without spaces between words (Japanese, Chinese) | (true) |
-| `sentence_start` | the letters a story sentence can begin with after . ! ? (as a regex class); the next sentence of a story starts there | `A-ZÄÖÜ`; Spanish adds `¿¡—` and accented capitals; Arabic any Arabic letter |
+| `sentence_start` | the letters a story sentence can begin with after . ! ? (as a regex class), also after a dialogue dash; a dash before a small letter (`—pregunta él`) goes on with the same sentence | `A-ZÄÖÜ`; Spanish adds `¿¡` and accented capitals; Arabic any Arabic letter |
 | `abbreviations` | words before a full stop that ends no sentence | Dr, bzw, usw … |
 | `ui` | the app's texts: `"de"` keeps the built-in German texts, `"en"` gives English (`UI_EN` in `scripts/language.py`), or a table of German text → your text | `"de"` |
 | `bingo` | `function_words`: small words that never count as a lesson word in Hör-Bingo (in Japanese also the particles Satzbau may show alone); `verb_endings`: endings a verb's near forms are found by (erinnern → erinnert, 飲む → 飲みます); `inside_words`: true where small words join the next word (Arabic و، ب، ال), so a form also counts inside a longer word | sich, an, hat …; en, rn, ln |
@@ -50,7 +51,7 @@ What stays the same for every language: the selection rules, the data contract, 
 
 - **`"direction": "rtl"`** (Arabic, Hebrew): the sheet stays left to right for its English, and every line of text takes the direction of its first letter (`unicode-bidi: plaintext`), so an Arabic example reads right to left beside its English translation. The app does the same for its cards, game words and the listening line, and Satzbau lines its words up from the right.
 - **`"spaces": false`** (Japanese, Chinese): word counts and the originality check count characters (two make a word, so twelve shared characters count as six copied words); Hör-Bingo finds a lesson word anywhere in a sentence, a verb also by its stem; a story sentence ends at 。！？. Satzbau asks the phone's browser for the words (`Intl.Segmenter`), keeps punctuation and the kana after a kanji with their word (食べ), and leaves out a sentence it breaks into a lone kana that is not a particle; a browser without `Intl.Segmenter` shows no Satzbau.
-- Story sentences end at . ! ? … and ؟ before a letter of `sentence_start`, so write the sentence starts of your language there (Spanish ¿ ¡ —).
+- Story sentences end at . ! ? … and ؟ before a letter of `sentence_start`, so write the sentence starts of your language there (Spanish ¿ ¡). A dialogue dash starts a sentence only before such a letter.
 
 ## Limits
 

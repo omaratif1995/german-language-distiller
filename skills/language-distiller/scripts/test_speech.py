@@ -41,6 +41,19 @@ class SpeechTests(unittest.TestCase):
         self.assertEqual(parts("Use «als» for the past and «wenn» for the present.", "marked"),
                          [("en", "Use"), ("de", "als"), ("en", "for the past and"), ("de", "wenn"), ("en", "for the present.")])
 
+    def test_a_pause_follows_the_punctuation_after_a_marked_word(self):
+        voices = {"de": "de-voice", "en": "en-voice"}       # «als», the verb: the comma belongs to the join after «als»
+        self.assertEqual(speech.make_clip("After «als», the verb goes last: «als ich klein war.»", "marked", voices).pauses,
+                         (0.08, 0.2, 0.3))
+
+    def test_a_rate_is_part_of_the_clip(self):
+        voices = {"de": "de-voice", "en": "en-voice"}
+        normal, slower = (speech.make_clip("Hör gut zu.", "de", voices, rate) for rate in ("", "-10%"))
+        self.assertNotEqual(normal.clip_id, slower.clip_id)
+        self.assertEqual((normal.rate, slower.rate), ("", "-10%"))
+        self.assertEqual(speech.segment_id("de-voice", "Hör gut zu."),       # the cache of normal clips stays valid
+                         "s_" + __import__("hashlib").sha256("de-voice\0Hör gut zu.".encode()).hexdigest()[:20])
+
     @NEEDS_DICTS
     def test_forms_lines_keep_english_glosses_english(self):
         segs = parts("Plural: die Abschlüsse · abschließen = to complete", "mix-de")

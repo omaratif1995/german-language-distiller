@@ -68,15 +68,15 @@ UNITS = [
                 "tries one and buys them without a second thought.",
           "uses": [{"card": "e2", "form": "Me pone"}, {"card": "v4", "form": "frescas"}, {"card": "v6", "form": "prueba"},
                    {"card": "g1", "form": "las compra"}]},
-         {"de": "En el puesto de quesos, Marta pregunta: —¿Cuánto cuesta este queso de cabra? Es caro, y el vendedor no quiere "
+         {"de": "—¿Cuánto cuesta este queso de cabra? —pregunta Marta en el puesto de quesos. Es caro, y el vendedor no quiere "
                 "regatear. —Bueno, lo voy a llevar igualmente —dice ella.",
-          "en": "At the cheese stall Marta asks: 'How much is this goat's cheese?' It is expensive, and the seller doesn't want to "
+          "en": "'How much is this goat's cheese?' Marta asks at the cheese stall. It is expensive, and the seller doesn't want to "
                 "haggle. 'Well, I'll take it anyway,' she says.",
           "uses": [{"card": "e1", "form": "Cuánto cuesta"}, {"card": "v3", "form": "regatear"}, {"card": "g1", "form": "lo voy a llevar"}]},
-         {"de": "—¿Algo más? —pregunta el vendedor. —No, nada más, gracias. En casa, Marta abre la cesta y sonríe: fresas, queso y "
-                "el mejor plan para el domingo.",
-          "en": "'Anything else?' asks the seller. 'No, nothing else, thanks.' At home Marta opens the basket and smiles: "
-                "strawberries, cheese and the best plan for Sunday.",
+         {"de": "—¿Algo más? —pregunta el vendedor. —No, nada más, gracias —responde ella. En casa, Marta abre la cesta y sonríe: "
+                "fresas, queso y el mejor plan para el domingo.",
+          "en": "'Anything else?' asks the seller. 'No, nothing else, thanks,' she answers. At home Marta opens the basket and "
+                "smiles: strawberries, cheese and the best plan for Sunday.",
           "uses": [{"card": "e3", "form": "No, nada más, gracias"}]}]}},
     {"id": "S2", "label": "Unidad 2", "page": 1, "title": "Un piso nuevo – Buscar casa",
      "vocabulary": [
@@ -133,20 +133,30 @@ UNITS = [
                 "whether she wants to share the flat with him.",
           "uses": [{"card": "v2", "form": "fianza"}, {"card": "v3", "form": "compartir"}]},
          {"de": "La mudanza es un domingo de lluvia. Entre cajas y risas aparece el vecino del cuarto con una tortilla: "
-                "—¡Bienvenidos al edificio! Esa noche cenan en el suelo del salón, más felices que nunca.",
+                "—¡Bienvenidos al edificio! —dice con una sonrisa. Esa noche cenan en el suelo del salón, más felices que nunca.",
           "en": "The move is on a rainy Sunday. Between boxes and laughter, the neighbour from the fourth floor turns up with a "
-                "tortilla: 'Welcome to the building!' That night they have dinner on the living-room floor, happier than ever.",
+                "tortilla. 'Welcome to the building!' he says with a smile. That night they have dinner on the living-room floor, "
+                "happier than ever.",
           "uses": [{"card": "v5", "form": "mudanza"}, {"card": "v6", "form": "vecino"}]}]}},
 ]
-# Spoken grammar explanations for the audio: conversational English, every Spanish word marked «…».
+# Spoken grammar explanations: "de" in simple Spanish (the target language), the one the app plays; "en" an English
+# backup behind the EN button, where every Spanish word comes after a colon or a full stop.
 NARRATION = {
-    "S1": {"g1": "When it's clear what you're talking about, Spanish replaces the thing with a short word: «lo», «la», «los» or "
-                 "«las». It goes right before the verb: «Los compro.» With an infinitive, you can also hang it on the end: "
-                 "«Voy a probarlo», which means the same as «Lo voy a probar». Careful: «le» and «les» are for the person who "
-                 "gets something, not for the thing itself."},
-    "S2": {"g1": "To compare two things, use «más» or «menos» with «que»: «Este piso es más luminoso que el anterior.» When both "
-                 "are the same, use «tan» with «como»: «El alquiler es tan caro como en el centro.» And remember the short forms: "
-                 "not «más bueno», but «mejor»."},
+    "S1": {"g1": {
+        "de": "Cuando ya sabes de qué hablas, no repites la palabra. La cambias por una palabra corta: lo, la, los o las. Va "
+              "justo antes del verbo: Los compro. Con un infinitivo, también puedes ponerla al final: Voy a probarlo. Significa "
+              "lo mismo que: Lo voy a probar. Pero cuidado: le y les son para la persona que recibe algo, no para la cosa.",
+        "en": "When it's clear what you're talking about, Spanish replaces the thing with a short word: «lo, la, los, las.» It "
+              "goes right before the verb. Listen: «Los compro.» With an infinitive, you can also hang it on the end: «Voy a "
+              "probarlo.» That means the same as: «Lo voy a probar.» Careful. For the person who receives something, Spanish "
+              "uses other words: «le, les.»"}},
+    "S2": {"g1": {
+        "de": "Para comparar dos cosas, usas más o menos con que: Este piso es más luminoso que el anterior. Cuando las dos "
+              "cosas son iguales, usas tan con como: El alquiler es tan caro como en el centro. Y recuerda las formas cortas: "
+              "no se dice más bueno, sino mejor.",
+        "en": "To compare two things, use these words: «más, menos, que.» Listen: «Este piso es más luminoso que el anterior.» "
+              "When both are the same, use these: «tan, como.» Listen: «El alquiler es tan caro como en el centro.» And remember "
+              "the short form for better: «mejor.»"}},
 }
 SOURCE_TEXT = """# Lecciones de ejemplo (contenido original escrito para este repositorio)
 ## Unidad 1 – En el mercado

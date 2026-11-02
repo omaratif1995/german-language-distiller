@@ -40,8 +40,9 @@ KIND = {"voc": "w", "rule": "g", "phrase": "r"}
 
 # ---------------------------------------------------------------- audio placement ---
 def add_audio_buttons(page, lesson, unit_plan, used, prof=None, ui=None):
-    """Target-language 🔊 buttons (headwords, examples, phrases, variants), a 🔊 Erklärung chain per grammar point,
-    and the story's sentence audio, paragraph buttons and word clips. `ui` translates the German labels."""
+    """Target-language 🔊 buttons (headwords, examples, phrases, variants), a 🔊 Erklärung chain per grammar point
+    (and an EN button for its English backup), and the story's sentence audio, paragraph buttons and word clips.
+    `ui` translates the German labels."""
     controls, ui = unit_plan["controls"], ui or {}
     name = (prof or language.profile(lesson.get("target_language", "de")))["name"]
 
@@ -60,9 +61,13 @@ def add_audio_buttons(page, lesson, unit_plan, used, prof=None, ui=None):
 
     for rec in lesson["grammar"]:
         def rule(block, rec=rec):
-            chain = unit_plan["explain"][rec["id"]]            # title + spoken explanation (embedded at the explain bitrate)
+            chain = unit_plan["explain"][rec["id"]]            # the spoken explanation (embedded at the explain bitrate)
+            backup = unit_plan.get("explain_en", {}).get(rec["id"])
             button = (f'<button type="button" class="explain-button" data-chain="{" ".join(chain)}" '
                       f'aria-label="Listen to the explanation">{html.escape(ui.get("🔊 Erklärung", "🔊 Erklärung"))}</button>')
+            if backup:                                         # the same explanation in English, one tap away
+                button += (f'<button type="button" class="explain-button explain-en" data-chain="{" ".join(backup)}" '
+                           f'aria-label="Listen to the explanation in English" title="English">EN</button>')
             block, n = re.subn(r"</h3>", lambda m: button + "</h3>", block, count=1)
             require(n == 1, f"cannot place explanation audio for {rec['id']}")
             return inject_example_buttons(block, [take(f'{rec["id"]}-ex-{i}') for i in range(len(rec["examples"]))], rec["id"])
@@ -220,6 +225,7 @@ APP_CSS = r"""
   .explain-button{border:1px solid rgba(255,255,255,.28);color:#fff;background:rgba(15,23,42,.55);font:inherit;font-size:13px;
        font-weight:700;border-radius:999px;padding:4px 10px;margin-left:8px;cursor:pointer;white-space:nowrap}
   .explain-button.is-playing{background:#0f766e;border-color:#6ee7b7}
+  .explain-en{margin-left:5px;padding:4px 8px;font-size:12px;letter-spacing:.04em;opacity:.85}
   .mode-practice .lernen,.mode-games .lernen{display:none}
   #practice,#games{display:none}
   .mode-practice #practice,.mode-games #games{display:block}
@@ -863,7 +869,7 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
             sequences[uid] = listening_order(f"{uid}-", lesson, unit_plan)
             examples[uid] = examples_order(f"{uid}-", lesson, unit_plan)
             stories[uid] = story_order(f"{uid}-", unit_plan)
-            for chain in unit_plan["explain"].values():
+            for chain in list(unit_plan["explain"].values()) + list(unit_plan.get("explain_en", {}).values()):
                 used_explain.update(chain)
             used_german.update([unit_plan["title"]] + list(unit_plan["sections"].values()))
             for cid in used_german | used_explain:
@@ -965,7 +971,7 @@ def main(argv=None):
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--no-audio", action="store_true", help="Study, practice and games only, no embedded audio")
     parser.add_argument("--bitrate", default="32k", help="German clips (default 32k)")
-    parser.add_argument("--explain-bitrate", default="24k", help="English grammar explanations (default 24k)")
+    parser.add_argument("--explain-bitrate", default="24k", help="spoken grammar explanations (default 24k)")
     parser.add_argument("--placeholder-audio", action="store_true", help=argparse.SUPPRESS)  # silent buttons, for tests/screenshots
     args = parser.parse_args(argv)
     try:

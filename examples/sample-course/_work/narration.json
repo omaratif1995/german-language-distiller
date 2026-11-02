@@ -1,8 +1,14 @@
 {
  "E1": {
-  "g1": "Many German verbs have a little prefix that breaks away in a normal sentence. The verb stays in position two, and the prefix jumps to the very end: «Die Besprechung fängt um neun Uhr an.» In the past tense, it becomes one word again: «hat angefangen». And with a modal verb, everything stays together at the end: «Ich muss heute früh anfangen.» Careful: some prefixes never separate, like the ones in «verstehen» and «bekommen». «Ich verstehe die Aufgabe.»"
+  "g1": {
+   "de": "Viele Verben haben eine kleine Vorsilbe, die sich im normalen Satz vom Verb trennt. Das Verb steht auf Position zwei, und die Vorsilbe springt ganz ans Ende: Die Besprechung fängt um neun Uhr an. Im Perfekt ist es wieder ein Wort: hat angefangen. Und mit einem Modalverb bleibt alles zusammen am Ende: Ich muss heute früh anfangen. Aber Vorsicht: Manche Vorsilben trennen sich nie, zum Beispiel bei verstehen und bekommen. Ich verstehe die Aufgabe.",
+   "en": "Many German verbs have a little prefix that breaks away in a normal sentence. The verb stays in position two, and the prefix jumps to the very end. Listen: «Die Besprechung fängt um neun Uhr an.» In the past tense, it becomes one word again: «hat angefangen.» And with a modal verb, everything stays together at the end: «Ich muss heute früh anfangen.» Careful: some prefixes never separate, like these: «verstehen, bekommen.» Listen: «Ich verstehe die Aufgabe.»"
+  }
  },
  "E2": {
-  "g1": "To make a suggestion sound open and friendly, use «könnten» or «wäre». «Wir könnten am Sonntag wandern gehen.» That sounds much softer than «wir müssen». You can also ask: «Wie wäre es mit einem Picknick im Park?» And to invite someone: «Hättest du Lust, mit ins Kino zu kommen?» Compare: «wir können» only says that something is possible. «Wir könnten» is a real suggestion."
+  "g1": {
+   "de": "Ein Vorschlag klingt offen und freundlich mit könnten oder wäre. Hör zu: Wir könnten am Sonntag wandern gehen. Das klingt viel weicher als wir müssen. Du kannst auch fragen: Wie wäre es mit einem Picknick im Park? Und für eine Einladung: Hättest du Lust, mit ins Kino zu kommen? Vergleiche: Wir können heißt nur, dass etwas möglich ist. Wir könnten ist ein echter Vorschlag.",
+   "en": "To make a suggestion sound open and friendly, use one of these: «könnten, wäre.» Listen: «Wir könnten am Sonntag wandern gehen.» That sounds much softer than: «wir müssen.» You can also ask: «Wie wäre es mit einem Picknick im Park?» And to invite someone: «Hättest du Lust, mit ins Kino zu kommen?» Compare. This only says that something is possible: «wir können.» And this is a real suggestion: «wir könnten.»"
+  }
  }
 }

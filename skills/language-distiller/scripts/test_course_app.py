@@ -114,11 +114,44 @@ class CourseAppTests(unittest.TestCase):
         course = course_audio.load_course(self.course_path)
         clips, plan = course_audio.build_course_plan(course)
         chain = plan["units"]["U1"]["explain"]["g1"]
-        self.assertEqual(len(chain), 2)                    # title + the authored explanation
+        self.assertEqual(len(chain), 1)                    # the authored explanation names its topic itself
+        self.assertNotIn(plan["units"]["U1"]["controls"]["g1-head"], plan["units"]["U1"]["sequence"])
         self.assertEqual(len(plan["units"]["U2"]["explain"]["g1"]), 5)
-        parts = clips[chain[1]].parts
+        parts = clips[chain[0]].parts
         self.assertIn(("de", "trotz des Regens."), parts)
         self.assertTrue(all(lang == "en" for lang, text in parts if "anyway" in text or "takes the" in text))
+        # one teacher explains: the narrator speaks both languages, a little slower
+        self.assertEqual(set(dict(clips[chain[0]].voices).values()), {"de-DE-SeraphinaMultilingualNeural"})
+        self.assertEqual(clips[chain[0]].rate, "-10%")
+
+    def test_a_german_explanation_with_an_english_backup(self):
+        (self.root / "narration.json").write_text(json.dumps({"U1": {"g1": {
+            "de": "Trotz heißt: Es passiert, aber es ist egal. Hör zu: Trotz des Regens gehen wir.",
+            "en": "When something happens anyway, German says: «trotz.» It takes the Genitiv: «trotz des Regens.»"}}}),
+            encoding="utf-8")
+        data = json.loads(self.course_path.read_text(encoding="utf-8"))
+        self.course_path.write_text(json.dumps({**data, "narration": "narration.json"}), encoding="utf-8")
+        course = course_audio.load_course(self.course_path)
+        clips, plan = course_audio.build_course_plan(course)
+        unit = plan["units"]["U1"]
+        german, english = clips[unit["explain"]["g1"][0]], clips[unit["explain_en"]["g1"][0]]
+        self.assertEqual([lang for lang, _ in german.parts], ["de"])          # one request, so it flows like speech
+        self.assertEqual(english.parts[1], ("de", "trotz."))
+        self.assertEqual({german.rate, english.rate}, {"-10%"})
+        self.assertIn(german.clip_id, unit["sequence"])                       # the lesson's listening plays German
+        self.assertNotIn(english.clip_id, unit["sequence"])
+        out = self.root / "app.html"
+        build_course_app.build(course, out, audio=True, placeholder_audio=True)
+        page = out.read_text(encoding="utf-8")
+        self.assertIn(f'class="explain-button explain-en" data-chain="{english.clip_id}"', page)
+        self.assertIn(f'class="explain-button" data-chain="{german.clip_id}"', page)
+
+    def test_narration_must_be_a_text_or_de_and_en(self):
+        (self.root / "narration.json").write_text(json.dumps({"U1": {"g1": {"fr": "Non."}}}), encoding="utf-8")
+        data = json.loads(self.course_path.read_text(encoding="utf-8"))
+        self.course_path.write_text(json.dumps({**data, "narration": "narration.json"}), encoding="utf-8")
+        with self.assertRaisesRegex(course_audio.AudioError, "narration U1 g1"):
+            course_audio.narration_notes(course_audio.load_course(self.course_path))
 
     def test_app_without_audio(self):
         out = self.root / "app.html"

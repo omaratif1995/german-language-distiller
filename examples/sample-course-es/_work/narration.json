@@ -1,8 +1,14 @@
 {
  "S1": {
-  "g1": "When it's clear what you're talking about, Spanish replaces the thing with a short word: «lo», «la», «los» or «las». It goes right before the verb: «Los compro.» With an infinitive, you can also hang it on the end: «Voy a probarlo», which means the same as «Lo voy a probar». Careful: «le» and «les» are for the person who gets something, not for the thing itself."
+  "g1": {
+   "de": "Cuando ya sabes de qué hablas, no repites la palabra. La cambias por una palabra corta: lo, la, los o las. Va justo antes del verbo: Los compro. Con un infinitivo, también puedes ponerla al final: Voy a probarlo. Significa lo mismo que: Lo voy a probar. Pero cuidado: le y les son para la persona que recibe algo, no para la cosa.",
+   "en": "When it's clear what you're talking about, Spanish replaces the thing with a short word: «lo, la, los, las.» It goes right before the verb. Listen: «Los compro.» With an infinitive, you can also hang it on the end: «Voy a probarlo.» That means the same as: «Lo voy a probar.» Careful. For the person who receives something, Spanish uses other words: «le, les.»"
+  }
  },
  "S2": {
-  "g1": "To compare two things, use «más» or «menos» with «que»: «Este piso es más luminoso que el anterior.» When both are the same, use «tan» with «como»: «El alquiler es tan caro como en el centro.» And remember the short forms: not «más bueno», but «mejor»."
+  "g1": {
+   "de": "Para comparar dos cosas, usas más o menos con que: Este piso es más luminoso que el anterior. Cuando las dos cosas son iguales, usas tan con como: El alquiler es tan caro como en el centro. Y recuerda las formas cortas: no se dice más bueno, sino mejor.",
+   "en": "To compare two things, use these words: «más, menos, que.» Listen: «Este piso es más luminoso que el anterior.» When both are the same, use these: «tan, como.» Listen: «El alquiler es tan caro como en el centro.» And remember the short form for better: «mejor.»"
+  }
  }
 }

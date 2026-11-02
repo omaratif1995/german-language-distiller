@@ -109,19 +109,27 @@ def run_length(prof, n):
 
 def sentence_rules(prof):
     """(end, not_end) for story sentences: a sentence ends at . ! ? … ؟ before the next sentence's first letter
-    (`sentence_start` of the profile: capitals in German, also ¿ ¡ — in Spanish, any letter in Arabic), or at 。！？
+    (`sentence_start` of the profile: capitals in German, also ¿ ¡ in Spanish, any letter in Arabic), or at 。！？
     in a language without spaces; a full stop after an abbreviation of the profile, a single letter or a day's number
-    (am 3. Mai) ends none."""
+    (am 3. Mai) ends none. A dialogue dash starts a sentence only before such a letter: «—¿Algo más? —pregunta él»
+    stays one sentence."""
     code = prof["code"]
     if code not in _rules:
-        letters = prof["speech"]["letters"]
+        letters, start = prof["speech"]["letters"], prof.get("sentence_start", prof["speech"]["upper"])
         others = "".join("|" + re.escape(word) for word in prof.get("abbreviations", []))
-        end = r"[.!?…؟]+[“”\"»«’)]*(?=\s+[„“\"«»(" + prof.get("sentence_start", prof["speech"]["upper"]) + r"0-9–-])"
+        end = r"[.!?…؟]+[“”\"»«’)]*(?=\s+(?:[„“\"«»(" + start + r"0-9–-]|—[" + start + r"]))"
         if not spaced(prof):
             end = r"[。！？]+[」』）)]*|" + end
         not_end = rf"(?:(?<![{letters}])[{letters}]|(?<!\d)\d{{1,2}}{others})\.\Z"
         _rules[code] = (re.compile(end), re.compile(not_end))
     return _rules[code]
+
+
+def narrator(prof):
+    """The voice that explains grammar, in the target language and in English alike, and how fast:
+    {"narrator": voice, "narrator_rate": "-10%"}; {} when the profile names none (then each language keeps its voice)."""
+    found = prof.get("narrator") or {}
+    return {"narrator": found["voice"], "narrator_rate": found.get("rate", "")} if found.get("voice") else {}
 
 
 def article_class(prof, article):

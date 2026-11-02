@@ -66,7 +66,8 @@ def load_course(path):
     except language.LanguageError as error:
         raise AudioError(str(error)) from error
     speech.use(course["profile"])                 # the course's language: its voice, words and notation
-    course["voices"] = {"de": course["profile"]["voice"], "en": speech.DEFAULT_VOICES["en"], **(course.get("voices") or {})}
+    course["voices"] = {"de": course["profile"]["voice"], "en": speech.DEFAULT_VOICES["en"],
+                        **language.narrator(course["profile"]), **(course.get("voices") or {})}
     return course
 
 
@@ -97,9 +98,14 @@ def narration_notes(course):
     for uid, points in course["narration"].items():
         require(uid in lessons, f"narration names an unknown unit: {uid}")
         grammar = {record["id"] for record in lessons[uid]["grammar"]}
-        for gid, text in points.items():
+        for gid, told in points.items():
             require(gid in grammar, f"narration names an unknown grammar point: {uid} {gid}")
-            notes += [f"{uid} {gid}: '{word}' looks {course['profile']['name']} but is not marked «…»" for word in speech.unmarked_german(text)]
+            told = {"en": told} if isinstance(told, str) else told
+            require(isinstance(told, dict) and told and set(told) <= {"de", "en"}
+                    and all(isinstance(text, str) and text.strip() for text in told.values()),
+                    f"narration {uid} {gid}: a text, or {{\"de\": the explanation in the language, \"en\": in English}}")
+            notes += [f"{uid} {gid}: '{word}' looks {course['profile']['name']} but is not marked «…»"
+                      for word in speech.unmarked_german(told.get("en", ""))]
     return notes
 
 

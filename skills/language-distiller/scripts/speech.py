@@ -288,20 +288,24 @@ class Clip:
     parts: tuple            # ((lang, spoken text), ...)
     voices: tuple = field(default=())
     pauses: tuple = ()      # seconds of silence after each part but the last
+    rate: str = ""          # speaking rate for the voice service ("-10%": a little slower), "" = normal
 
     @property
     def text(self):
         return " ".join(f"[{lang}] {spoken}" for lang, spoken in self.parts)
 
 
-def _pause_after(chunk):
-    """A join should sound like one speaker: a breath inside a sentence, a real pause after it."""
-    end = chunk.rstrip(" «»\"'」』")[-1:]
+def _pause_after(chunk, after=""):
+    """A join should sound like one speaker: a breath inside a sentence, a real pause after it. The punctuation can
+    also open the next part («als», the verb …: the comma follows the German word)."""
+    end, lead = chunk.rstrip(" «»\"'」』")[-1:], after.lstrip(" «»\"'「『")[:1]
+    end = lead if lead and lead in ".!?。！？؟:;：；؛,–—、，،" else end
     return 0.45 if end in ".!?。！？؟" else 0.3 if end in ":;：；؛" else 0.2 if end in ",–—、，،" else 0.08
 
 
-def make_clip(text, kind, voices):
-    """Build a clip for `text` of the given kind ("de", "en", "mix-de", "marked")."""
+def make_clip(text, kind, voices, rate=""):
+    """Build a clip for `text` of the given kind ("de", "en", "mix-de", "marked"), spoken by `voices` (one per
+    language; the same voice for both makes one speaker) at `rate` ("-10%" is a little slower)."""
     require(kind in ("de", "en", "mix-de", "marked"), f"unknown text kind {kind}")
     if kind == "de":
         raw = [("de", normalize(text))]
@@ -309,19 +313,20 @@ def make_clip(text, kind, voices):
         raw = segments(text, base="en")
     else:
         raw = segments(normalize(text), base="de" if kind == "mix-de" else "en")
-    spoken = [(lang, speakable(chunk, lang), _pause_after(chunk)) for lang, chunk in raw]
+    spoken = [(lang, speakable(chunk, lang), _pause_after(chunk, raw[i + 1][1] if i + 1 < len(raw) else ""))
+              for i, (lang, chunk) in enumerate(raw)]
     spoken = [item for item in spoken if re.search(rf"[{_LETTERS}0-9]", item[1])]
     require(spoken, f"empty audio text: {text!r}")
     parts = tuple((lang, words) for lang, words, _ in spoken)
     pauses = tuple(pause for _, _, pause in spoken[:-1])
-    key = json.dumps([[voices[lang], words] for lang, words in parts] + ([list(pauses)] if pauses else []),
-                     ensure_ascii=False)
+    key = json.dumps([[voices[lang], words] for lang, words in parts] + ([list(pauses)] if pauses else [])
+                     + ([rate] if rate else []), ensure_ascii=False)
     return Clip("a_" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:20], parts,
-                tuple(sorted(voices.items())), pauses)
+                tuple(sorted((lang, voices[lang]) for lang in {lang for lang, _ in parts})), pauses, rate)
 
 
-def segment_id(lang, spoken, voices):
-    return "s_" + hashlib.sha256(f"{voices[lang]}\0{spoken}".encode("utf-8")).hexdigest()[:20]
+def segment_id(voice, spoken, rate=""):
+    return "s_" + hashlib.sha256(f"{voice}\0{spoken}{chr(0) + rate if rate else ''}".encode("utf-8")).hexdigest()[:20]
 
 
 def ffmpeg_exe():
@@ -352,7 +357,8 @@ def _join(paths, pauses, target, ff):
 
 
 async def synthesize(clips, cache_dir, voices, concurrency=6):
-    """Synthesize every clip into cache_dir/clips/<id>.mp3 (segments cached in cache_dir/segments)."""
+    """Synthesize every clip into cache_dir/clips/<id>.mp3 (segments cached in cache_dir/segments). Each clip speaks
+    with its own voices and rate (a grammar narrator, a little slower); `voices` covers clips made without them."""
     try:
         import edge_tts
     except ImportError as error:
@@ -366,13 +372,13 @@ async def synthesize(clips, cache_dir, voices, concurrency=6):
     joins = asyncio.Semaphore(4)
     downloads = {}                              # one download per segment, however many clips share it
 
-    def segment(lang, spoken):
-        key = segment_id(lang, spoken, voices)
+    def segment(voice, spoken, rate):
+        key = segment_id(voice, spoken, rate)
         if key not in downloads:
-            downloads[key] = asyncio.ensure_future(fetch(lang, spoken, seg_dir / f"{key}.mp3"))
+            downloads[key] = asyncio.ensure_future(fetch(voice, spoken, rate, seg_dir / f"{key}.mp3"))
         return downloads[key]
 
-    async def fetch(lang, spoken, path):
+    async def fetch(voice, spoken, rate, path):
         if path.exists() and path.stat().st_size > 256:
             return path
         async with semaphore:
@@ -380,7 +386,7 @@ async def synthesize(clips, cache_dir, voices, concurrency=6):
             for attempt in range(4):
                 try:
                     temporary = path.with_suffix(f".part{attempt}")
-                    await edge_tts.Communicate(text=spoken, voice=voices[lang]).save(str(temporary))
+                    await edge_tts.Communicate(text=spoken, voice=voice, rate=rate or "+0%").save(str(temporary))
                     require(temporary.stat().st_size > 256, "empty audio returned")
                     temporary.replace(path)
                     return path
@@ -393,7 +399,8 @@ async def synthesize(clips, cache_dir, voices, concurrency=6):
         target = clip_dir / f"{item.clip_id}.mp3"
         if target.exists() and target.stat().st_size > 256:
             return target
-        paths = [await segment(lang, spoken) for lang, spoken in item.parts]
+        own = {**voices, **dict(item.voices)}
+        paths = [await segment(own[lang], spoken, item.rate) for lang, spoken in item.parts]
         temporary = target.with_suffix(".part")
         if len(paths) == 1:
             temporary.write_bytes(paths[0].read_bytes())

@@ -255,8 +255,8 @@
     ]
    },
    {
-    "de": "En el puesto de quesos, Marta pregunta: —¿Cuánto cuesta este queso de cabra? Es caro, y el vendedor no quiere regatear. —Bueno, lo voy a llevar igualmente —dice ella.",
-    "en": "At the cheese stall Marta asks: 'How much is this goat's cheese?' It is expensive, and the seller doesn't want to haggle. 'Well, I'll take it anyway,' she says.",
+    "de": "—¿Cuánto cuesta este queso de cabra? —pregunta Marta en el puesto de quesos. Es caro, y el vendedor no quiere regatear. —Bueno, lo voy a llevar igualmente —dice ella.",
+    "en": "'How much is this goat's cheese?' Marta asks at the cheese stall. It is expensive, and the seller doesn't want to haggle. 'Well, I'll take it anyway,' she says.",
     "uses": [
      {
       "card": "e1",
@@ -273,8 +273,8 @@
     ]
    },
    {
-    "de": "—¿Algo más? —pregunta el vendedor. —No, nada más, gracias. En casa, Marta abre la cesta y sonríe: fresas, queso y el mejor plan para el domingo.",
-    "en": "'Anything else?' asks the seller. 'No, nothing else, thanks.' At home Marta opens the basket and smiles: strawberries, cheese and the best plan for Sunday.",
+    "de": "—¿Algo más? —pregunta el vendedor. —No, nada más, gracias —responde ella. En casa, Marta abre la cesta y sonríe: fresas, queso y el mejor plan para el domingo.",
+    "en": "'Anything else?' asks the seller. 'No, nothing else, thanks,' she answers. At home Marta opens the basket and smiles: strawberries, cheese and the best plan for Sunday.",
     "uses": [
      {
       "card": "e3",

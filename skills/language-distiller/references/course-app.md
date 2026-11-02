@@ -30,7 +30,7 @@ List units in course order. Use the newest reviewed sheet of each unit; drafts a
 
 German is the example below. Another language uses its profile's voice, word lists and dictionary in the same way ([languages.md](languages.md)); `course.json` may still set `voices`. All units of a course share one target language, and the app's own texts are German for a German course and English for any other.
 
-Multilingual neural voices guess the language of each request, and the Edge service marks every request as American English. Short German words inside English ("als", "rund", "total") then come out with English pronunciation. `scripts/speech.py` therefore never asks one voice to speak both languages:
+Multilingual neural voices guess the language of each request, and the Edge service marks every request as American English. Short German words inside English ("als", "rund", "total") then come out with English pronunciation. `scripts/speech.py` therefore never asks a voice to switch language inside one request:
 
 - German text (headwords, examples, frames, variants, story sentences) goes to the German voice in one piece.
 - English text (glosses, use cues, explanations) is split into language runs, and German words inside it go to the German voice. Detection uses:
@@ -41,27 +41,34 @@ Multilingual neural voices guess the language of each request, and the Edge serv
 
   It also reads course-book notation: `A:` and `CH:` (Austrian and Swiss variants), `etw.`, `jdn.`, `(e)`, `→` and `…sten`.
 - Forms lines (`abschließen = to complete`) are German notes; the side right of `=` is read as an English gloss.
-- Each run is synthesized on its own. The clip trims each run's built-in silence and pauses by punctuation, so it sounds like one speaker.
+- Each run is synthesized on its own. The clip trims each run's built-in silence and pauses by punctuation (also a comma or colon right after a German word), so it sounds like one speaker.
+- Grammar explanations have **one narrator**: the profile's multilingual voice (German: `de-DE-SeraphinaMultilingualNeural`, at `-10%`) reads the German and the English runs alike, so an explanation sounds like one teacher, not two people taking turns. `voices.narrator` in `course.json` can name another one.
 
 Before synthesizing, read the `plan` output and spot-check `<cache>/plan.json`, where `texts` shows every clip as `[de] …` and `[en] …` runs. Fix a mis-split note in the lesson data, not in the audio.
 
 ## Spoken grammar explanations (narration.json)
 
-Without narration, `🔊 Erklärung` reads the grammar card itself: title, meaning, rule, patterns and contrast. That is correct, but it sounds like a list. For natural audio, write `narration.json` next to `course.json`, keyed by unit id and grammar id:
+Without narration, `🔊 Erklärung` reads the grammar card itself: title, meaning, rule, patterns and contrast. That is correct, but it sounds like a list. For natural audio, write `narration.json` next to `course.json`, keyed by unit id and grammar id, with two versions of each point:
 
 ```json
-{"L01": {"g01": "Use «als» for one single moment in the past, or for one period of your life. For example: «Als ich ein Kind war, hatten wir einen Hund.» After «als», the verb goes to the very end …"}}
+{"L01": {"g01": {
+  "de": "Für einen einzigen Moment in der Vergangenheit, oder für eine ganze Zeit in deinem Leben, sagt man: als. Hör zu: Als ich ein Kind war, hatten wir einen Hund. …",
+  "en": "«Als»: one event, or one period, in the past. … Listen: «Als ich ein Kind war, hatten wir einen Hund.» …"}}}
 ```
 
-Write each point as a short spoken explanation:
+- **`de`, the explanation in the target language,** is what `🔊 Erklärung`, *Ganze Lektion* and the MP3 episodes play: one voice in one language, read in one piece, so it flows like a teacher talking. Write it at the learner's level: short sentences, *du*, the grammar words the course uses (*Nebensatz*, *Verb am Ende*, *Genitiv*), 60–110 words. Name a word you talk about as a word ("Das Wort deshalb …"), so it is not heard as part of the sentence.
+- **`en`, an English backup,** waits behind a small **EN** button for days when the target-language version is too hard. Mark every target-language word, phrase or sentence with «…», and put it **after a colon or a full stop, never inside an English sentence**: "For the present, you say: «wenn.»", not "Use «wenn» for the present". The narrator then changes language at a natural pause. Put the full stop inside the marks («wenn.»).
+- A plain string instead of the two versions is an English-only explanation (older narration files).
 
-- **Length and order:** 50–110 words of plain, conversational English, in this order: what it is for, the rule, one or two examples, the usual trap.
-- **Marks:** mark every German word, phrase or sentence with «…». Marked text goes to the German voice and nothing is guessed.
-- **No symbols:** leave out `+`, `→` and `/`, and isolated endings. Show German through short phrases (say «am größten», not "-sten").
+For both versions:
+
+- **Order:** what it is for, the rule, one or two examples, the usual trap.
+- **No symbols:** leave out `+`, `→` and `/`. Show endings through short phrases (say «am größten», not "-sten"); a word like *-ung* is read as "ung".
 - **No wrong German aloud:** describe the mistake instead of saying it, because learners copy what they hear.
-- **Original examples:** quote the sheet's own examples or new ones, never the source's.
+- **Original examples:** quote the sheet's own examples or new ones, never the source's, and check the narration for six-word runs shared with the source like any example.
+- **A little slower:** the narrator speaks at the profile's rate (German `-10%`, about 8 % longer), which gives a grammar point time to land; beyond `-15%` it starts to drag.
 
-`plan` refuses narration for unknown unit or grammar ids, and lists unmarked words that look German.
+Without a narrator voice in the profile, `de` is read by the target voice and the `en` runs alternate between the two voices. `plan` refuses narration for unknown unit or grammar ids or with keys other than `de` and `en`, and lists unmarked words in `en` that look German.
 
 ## Audio commands
 

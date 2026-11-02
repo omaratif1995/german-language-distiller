@@ -2,7 +2,7 @@
  "schema_version": 2,
  "lesson_id": "S2",
  "inventory_sha256": "7fbd99f92724f52e174102928de6421c354399bd4cbe7aeb65a427bd2d004b22",
- "lesson_sha256": "54de6bd1b3984b8d9799ed0f54abb57dd2d413c6281932dfb370e2e87b61b8a8",
+ "lesson_sha256": "ce12426db9b8cfe513f7f89657b5ed9f6a325a2b157dd33ddba8f81ecd5756ca",
  "reviewer": "sample author",
  "method": "author-second-pass",
  "checks": {

@@ -133,11 +133,11 @@ ARABIC = {
     "grammar": [{"id": "g1", "title": "The future with سوف", "meaning": "Talk about what will happen.",
                  "rule": "سوف (or the short سـ) comes before a verb in the present tense.",
                  "patterns": [{"label": "pattern", "form": "سوف + أفعل / نفعل / تفعل"}],
-                 "contrast": "سـ is joined to the verb: سأسافر means the same as سوف أسافر.",
+                 "contrast": "سـ is the short form, joined to the verb: سأسافر. Some speakers keep it for the nearer future.",
                  "examples": [{"de": "سوف أسافر إلى القاهرة في الصيف.", "en": "I will travel to Cairo in the summer.", "targets": ["سوف أسافر"]},
                               {"de": "سوف نطبخ العشاء معًا الليلة.", "en": "We will cook dinner together tonight.", "targets": ["سوف نطبخ"]}]}],
     "redemittel": [
-        phrase("e1", "في المقهى", "أريد …", "I would like …", "Order or ask for something.", "أريد فنجان قهوة من فضلك.",
+        phrase("e1", "في المقهى", "أريد …", "I want …", "Order or ask for something.", "أريد فنجان قهوة من فضلك.",
                "I would like a cup of coffee, please.", "أريد", [{"form": "أودّ …", "usage": "more polite"}]),
         phrase("e2", "في السوق", "كم سعر …؟", "How much is …?", "Ask for a price at the market.", "كم سعر هذا القميص الأزرق؟",
                "How much is this blue shirt?", "كم سعر"),
@@ -147,8 +147,8 @@ ARABIC = {
         {"de": "تذهب ليلى إلى السوق مع أخيها. يشتريان الخبز والفاكهة.",
          "en": "Layla goes to the market with her brother. They buy bread and fruit.",
          "uses": [{"card": "v1", "form": "السوق"}, {"card": "v2", "form": "الخبز"}, {"card": "v3", "form": "الفاكهة"}]},
-        {"de": "البائع يقول: سعر التفاح رخيص اليوم. هل هذا صحيح؟ نعم، إنه رخيص جدًا.",
-         "en": "The seller says: the price of apples is low today. Is that true? Yes, they are very cheap.",
+        {"de": "البائع يقول: سعر التفاح منخفض اليوم. هل هذا صحيح؟ نعم، التفاح رخيص جدًا.",
+         "en": "The seller says: the price of apples is low today. Is that true? Yes, the apples are very cheap.",
          "uses": [{"card": "v5", "form": "البائع"}, {"card": "v4", "form": "سعر"}, {"card": "v6", "form": "رخيص"}]},
         {"de": "سوف نطبخ معًا الليلة، تقول ليلى. وفي المقهى تقول: أريد شايًا أخضر.",
          "en": "We will cook together tonight, Layla says. And in the café she says: I would like a green tea.",
@@ -159,7 +159,7 @@ JAPANESE = {
     "vocabulary": [
         word("v1", "市場", "noun", "いちば", "market", "毎週土曜日に市場で野菜を買います。",
              "Every Saturday I buy vegetables at the market.", "市場", "買い物"),
-        word("v2", "パン", "noun", "", "bread", "朝はチーズとパンを食べます。", "In the morning I eat bread with cheese.", "パン", "買い物"),
+        word("v2", "パン", "noun", "", "bread", "朝はチーズとパンを食べます。", "In the morning I eat cheese and bread.", "パン", "買い物"),
         word("v3", "果物", "noun", "くだもの", "fruit", "妹はお菓子より果物が好きです。",
              "My younger sister likes fruit more than sweets.", "果物", "買い物"),
         word("v4", "値段", "noun", "ねだん", "price", "今日はオレンジの値段がとても高いです。",
@@ -171,7 +171,7 @@ JAPANESE = {
     "grammar": [{"id": "g1", "title": "Plans with つもりです", "meaning": "Say what you plan to do.",
                  "rule": "Put つもりです after the dictionary form of the verb.",
                  "patterns": [{"label": "pattern", "form": "行く / 食べる / 料理する + つもりです"}],
-                 "contrast": "For a plan you have only just made, 〜ようと思います sounds more natural.",
+                 "contrast": "For a plan you are only thinking about, 〜ようと思います is softer.",
                  "examples": [{"de": "夏に京都へ行くつもりです。", "en": "I plan to go to Kyoto in the summer.", "targets": ["行くつもりです"]},
                               {"de": "今夜は家で料理するつもりです。", "en": "Tonight I plan to cook at home.", "targets": ["料理するつもりです"]}]}],
     "redemittel": [
@@ -180,16 +180,16 @@ JAPANESE = {
         phrase("e2", "市場で", "〜はいくらですか", "How much is …?", "Ask for a price.", "このシャツはいくらですか。",
                "How much is this shirt?", "いくらですか"),
         phrase("e3", "市場で", "どうもありがとうございます", "Thank you very much", "Thank someone warmly.",
-               "手伝ってくれて、どうもありがとうございます。", "Thank you very much for helping me.", "どうもありがとうございます")],
+               "手伝ってくださって、どうもありがとうございます。", "Thank you very much for helping me.", "どうもありがとうございます")],
     "story": {"title": "土曜日の市場", "paragraphs": [
-        {"de": "さくらは弟と市場へ行きます。パンと果物を買いました。",
-         "en": "Sakura goes to the market with her younger brother. They bought bread and fruit.",
+        {"de": "さくらは弟と市場へ行きます。パンと果物を買います。",
+         "en": "Sakura goes to the market with her younger brother. They buy bread and fruit.",
          "uses": [{"card": "v1", "form": "市場"}, {"card": "v2", "form": "パン"}, {"card": "v3", "form": "果物"}]},
-        {"de": "店員は「今日はりんごの値段が安いですよ」と言いました。本当ですか。はい、とても安いです。",
-         "en": "The shop assistant said: the price of apples is low today. Really? Yes, very cheap.",
+        {"de": "店員は「今日はりんごが安いですよ」と言います。値段を見ると、本当に安いです。",
+         "en": "The shop assistant says: apples are cheap today. When Sakura looks at the price, they really are cheap.",
          "uses": [{"card": "v5", "form": "店員"}, {"card": "v4", "form": "値段"}, {"card": "v6", "form": "安い"}]},
-        {"de": "今夜は一緒に料理するつもりです。喫茶店で、さくらは「紅茶をお願いします」と言いました。",
-         "en": "Tonight they plan to cook together. In the café, Sakura said: a black tea, please.",
+        {"de": "二人は今夜一緒に料理するつもりです。喫茶店で、さくらは「紅茶をお願いします」と言います。",
+         "en": "The two of them plan to cook together tonight. In the café, Sakura says: a black tea, please.",
          "uses": [{"card": "g1", "form": "料理するつもりです"}, {"card": "e1", "form": "お願いします"}]}]}}
 
 
@@ -290,6 +290,9 @@ class LanguageTests(unittest.TestCase):
                          ["—Me pone un kilo, por favor —dice Marta.", "—Están muy frescas."])
         self.assertEqual(pack.story_sentences("El Sr. García llega tarde. Luego come.", spanish),
                          ["El Sr. García llega tarde.", "Luego come."])
+        # a dialogue tag after ? or ! goes on with the same sentence; a new line of dialogue starts a new one
+        self.assertEqual(pack.story_sentences("—Están muy frescas, ¡pruébelas! —contesta el vendedor. Marta prueba una.", spanish),
+                         ["—Están muy frescas, ¡pruébelas! —contesta el vendedor.", "Marta prueba una."])
 
     def test_an_arabic_course_reads_right_to_left(self):
         lesson, sheet = write_lesson(self.root, ARABIC)
@@ -313,8 +316,9 @@ class LanguageTests(unittest.TestCase):
         self.assertIn('<html lang="ja">', page)
         self.assertNotIn(pack.RTL_CSS, page)
         self.assertTrue(validates(sheet))
-        self.assertEqual(page.count('class="ss"'), 7)        # 。 ends a sentence with no space after it
-        self.assertIn('<span class="ss" id="story-s4">本当ですか。</span>', page)
+        self.assertEqual(page.count('class="ss"'), 6)        # 。 ends a sentence with no space after it
+        self.assertEqual(pack.story_sentences(JAPANESE["story"]["paragraphs"][1]["de"], language.profile("ja")),
+                         ["店員は「今日はりんごが安いですよ」と言います。", "値段を見ると、本当に安いです。"])
         app, games = build_app(self.root, lesson, sheet)
         self.assertIn('"spaces":false', app)                 # Satzbau asks the browser for the words
         self.assertEqual(len(games["s"]), 11)

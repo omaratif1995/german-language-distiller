@@ -61,18 +61,25 @@ def build_plan(lesson, voices=None, narration=None):
     """Clips, listening order, per-card controls and the spoken grammar explanations of one lesson.
 
     Target-language text goes to the target voice (German: de-DE-KatjaNeural), English text to the English voice;
-    target-language words inside English text are detected and spoken by the target voice. `narration` maps grammar
-    ids to authored spoken explanations (English with target-language words marked «…»); without one, meaning,
-    rule, patterns and contrast are read.
-    Returns (clips, sequence, controls, explain).
+    target-language words inside English text are detected and spoken by the target voice.
+
+    Grammar is explained by one narrator (`voices["narrator"]`, a voice that speaks both languages, at
+    `voices["narrator_rate"]`, a little slower), so the explanation sounds like one teacher. `narration` maps grammar
+    ids to authored explanations: {"de": the explanation in the target language, "en": an English backup with
+    target-language words marked «…»}, or a string (English only). The target-language one is played and listened
+    to; the English one waits behind an EN button. Without narration, meaning, rule, patterns and contrast are read.
+    Returns (clips, sequence, controls, explain, explain_en).
     """
     voices, narration, names = voices_of(voices), narration or {}, sections_of(lesson)
-    clips, sequence, controls, explain = {}, [], {}, {}
+    clips, sequence, controls, explain, explain_en = {}, [], {}, {}, {}
+    teacher = {lang: voices.get("narrator") or voices[lang] for lang in ("de", "en")}
+    pace = voices.get("narrator_rate", "")
 
-    def add(value, kind, control=None):
-        clip = speech.make_clip(value, kind, voices)
+    def add(value, kind, control=None, who=None, rate="", listed=True):
+        clip = speech.make_clip(value, kind, who or voices, rate)
         clips.setdefault(clip.clip_id, clip)
-        sequence.append(clip.clip_id)
+        if listed:                                    # part of the lesson's listening order
+            sequence.append(clip.clip_id)
         if control:
             require(control not in controls, f"Duplicate audio control {control}")
             controls[control] = clip.clip_id
@@ -97,17 +104,20 @@ def build_plan(lesson, voices=None, narration=None):
     add(names["grammar"], "de")
     for record in lesson["grammar"]:
         gid = record["id"]
-        chain = [add(record["title"], "en", f"{gid}-head")]
-        if narration.get(gid):
-            chain.append(add(narration[gid], "marked"))
+        told = narration.get(gid) or {}
+        told = {"en": told} if isinstance(told, str) else told
+        title = add(record["title"], "en", f"{gid}-head", teacher, pace, listed=not told)   # a narration names its topic
+        if told.get("de"):
+            explain[gid] = [add(told["de"], "de", None, teacher, pace)]
+            if told.get("en"):
+                explain_en[gid] = [add(told["en"], "marked", None, teacher, pace, listed=False)]
+        elif told.get("en"):
+            explain[gid] = [add(told["en"], "marked", None, teacher, pace)]
         else:
-            chain.append(add(record["meaning"], "en"))
-            chain.append(add("How it works: " + record["rule"], "en"))
-            for pattern in record["patterns"]:
-                chain.append(add(pattern["label"] + ": " + pattern["form"], "en"))
-            if record.get("contrast"):
-                chain.append(add("Careful: " + record["contrast"], "en"))
-        explain[gid] = chain
+            explain[gid] = [title] + [add(text, "en", None, teacher, pace) for text in
+                                      [record["meaning"], "How it works: " + record["rule"]]
+                                      + [pattern["label"] + ": " + pattern["form"] for pattern in record["patterns"]]
+                                      + (["Careful: " + record["contrast"]] if record.get("contrast") else [])]
         for index, example in enumerate(record["examples"]):
             add(example["de"], "de", f'{gid}-ex-{index}')
             add(example["en"], "en")
@@ -137,13 +147,13 @@ def build_plan(lesson, voices=None, narration=None):
             for sentence in story_sentences(paragraph["de"], language.profile(lesson.get("target_language", "de"))):
                 number += 1
                 add(sentence, "de", f"story-s{number}")
-    return clips, sequence, controls, explain
+    return clips, sequence, controls, explain, explain_en
 
 
 def lesson_plan(lesson, voices=None, narration=None):
     """build_plan plus what players need: title and section clips, story paragraphs, English example clips."""
     voices = voices_of(voices)
-    clips, sequence, controls, explain = build_plan(lesson, voices, narration)
+    clips, sequence, controls, explain, explain_en = build_plan(lesson, voices, narration)
 
     def add(text, kind="de"):
         clip = speech.make_clip(text, kind, voices)
@@ -152,7 +162,7 @@ def lesson_plan(lesson, voices=None, narration=None):
 
     plan = {"title": add(lesson["title"]),
             "sections": {key: add(name) for key, name in sections_of(lesson).items() if key != "story" or lesson.get("story")},
-            "sequence": sequence, "controls": controls, "explain": explain, "story": [],
+            "sequence": sequence, "controls": controls, "explain": explain, "explain_en": explain_en, "story": [],
             "english": {f'{record["id"]}-ex-{index}': add(example["en"], "en")
                         for section in ("vocabulary", "grammar", "redemittel") for record in lesson[section]
                         for index, example in enumerate(record["examples"])}}
@@ -639,7 +649,7 @@ def main(argv=None):
         speech.use(prof)
         for key in ("title", "vocabulary", "grammar", "redemittel"):
             require(key in lesson, f"Lesson is missing {key}")
-        voices = {"de": args.voice_de or prof["voice"], "en": args.voice_en}
+        voices = {"de": args.voice_de or prof["voice"], "en": args.voice_en, **language.narrator(prof)}
         clips, plan = lesson_plan(lesson, voices)
         print(f"AUDIO PLAN: {len(clips)} unique clips; {len(plan['sequence'])} listening steps; voices={voices}")
         paths = asyncio.run(synthesize(clips, args.cache_dir, voices, args.concurrency))

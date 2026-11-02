@@ -3,6 +3,10 @@
   "name": "German",
   "native": "Deutsch",
   "voice": "de-DE-KatjaNeural",
+  "narrator": {
+    "voice": "de-DE-SeraphinaMultilingualNeural",
+    "rate": "-10%"
+  },
   "sections": {
     "vocabulary": "Wortschatz",
     "grammar": "Grammatik",
