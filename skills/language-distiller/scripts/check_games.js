@@ -1,6 +1,6 @@
 /* Plays every game of a built study app the way a hurried thumb does, and checks that each round makes sense.
 
-   Run it inside the app page (inspect_games.mjs does that in headless Chrome; a browser console works too). It answers
+   Run it inside the app page (inspect_games.py does that in headless Chrome; a browser console works too). It answers
    right with a double tap, taps again just after the next question appears, and reports:
    - a right answer that showed "wrong" for a moment (the flash learners notice),
    - a Hör-Bingo call whose sentence holds a second word of the card (two right answers),

@@ -105,7 +105,7 @@ examples/sample-course-es/                 the same for Spanish
 .claude-plugin/                            Claude Code plugin and marketplace entry
 ```
 
-Run the tests with `python -m unittest` inside `scripts/`. The speech tests need `pyspellchecker` and are skipped without it. To check a built app's games in a real browser, run `node skills/language-distiller/scripts/inspect_games.mjs <chrome> <app.html>`, or paste `check_games.js` into the browser console with the app open.
+Run the tests with `python -m unittest` inside `scripts/`. The speech tests need `pyspellchecker` and are skipped without it. To check a built app's games in a real browser, run `python skills/language-distiller/scripts/inspect_games.py <app.html>`: it plays every game of every unit in headless Chrome or Edge at phone size. Pasting `check_games.js` into the browser console with the app open works too.
 
 ## License
 
