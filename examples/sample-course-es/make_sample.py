@@ -139,24 +139,40 @@ UNITS = [
                 "happier than ever.",
           "uses": [{"card": "v5", "form": "mudanza"}, {"card": "v6", "form": "vecino"}]}]}},
 ]
-# Spoken grammar explanations: "de" in simple Spanish (the target language), the one the app plays; "en" an English
-# backup behind the EN button, where every Spanish word comes after a colon or a full stop.
+# Spoken grammar explanations: "de" in simple Spanish (the target language), the one the app plays and writes on the
+# grammar card; "en" an English backup behind the EN button, where every Spanish word comes after a colon or a full
+# stop. Both are written in lines (a paragraph, "> " an example, "! " the trap); «…» marks the Spanish words talked
+# about, and "title" and "patterns" put the rest of the card in Spanish.
 NARRATION = {
     "S1": {"g1": {
-        "de": "Cuando ya sabes de qué hablas, no repites la palabra. La cambias por una palabra corta: lo, la, los o las. Va "
-              "justo antes del verbo: Los compro. Con un infinitivo, también puedes ponerla al final: Voy a probarlo. Significa "
-              "lo mismo que: Lo voy a probar. Pero cuidado: le y les son para la persona que recibe algo, no para la cosa.",
+        "title": "Pronombres de objeto directo: lo, la, los, las",
+        "de": "Cuando ya sabes de qué hablas, no repites la palabra. La cambias por una palabra corta: «lo», «la», «los» o "
+              "«las». Va justo antes del verbo:\n"
+              "> Los compro.\n"
+              "Con un infinitivo, también puedes ponerla al final: «Voy a probarlo». Significa lo mismo que: «Lo voy a probar».\n"
+              "! Pero cuidado: «le» y «les» son para la persona que recibe algo, no para la cosa.",
+        "patterns": [{"label": "antes del verbo", "form": "Los compro."},
+                     {"label": "con infinitivo", "form": "Voy a probarlo. = Lo voy a probar."},
+                     {"label": "femenino plural", "form": "Las llevo en la cesta."}],
         "en": "When it's clear what you're talking about, Spanish replaces the thing with a short word: «lo, la, los, las.» It "
-              "goes right before the verb. Listen: «Los compro.» With an infinitive, you can also hang it on the end: «Voy a "
-              "probarlo.» That means the same as: «Lo voy a probar.» Careful. For the person who receives something, Spanish "
-              "uses other words: «le, les.»"}},
+              "goes right before the verb. Listen:\n"
+              "> «Los compro.»\n"
+              "With an infinitive, you can also hang it on the end: «Voy a probarlo.» That means the same as: «Lo voy a probar.»\n"
+              "! Careful. For the person who receives something, Spanish uses other words: «le, les.»"}},
     "S2": {"g1": {
-        "de": "Para comparar dos cosas, usas más o menos con que: Este piso es más luminoso que el anterior. Cuando las dos "
-              "cosas son iguales, usas tan con como: El alquiler es tan caro como en el centro. Y recuerda las formas cortas: "
-              "no se dice más bueno, sino mejor.",
-        "en": "To compare two things, use these words: «más, menos, que.» Listen: «Este piso es más luminoso que el anterior.» "
-              "When both are the same, use these: «tan, como.» Listen: «El alquiler es tan caro como en el centro.» And remember "
-              "the short form for better: «mejor.»"}},
+        "title": "Comparaciones: más … que, tan … como",
+        "de": "Para comparar dos cosas, usas «más» o «menos» con «que»:\n"
+              "> Este piso es más luminoso que el anterior.\n"
+              "Cuando las dos cosas son iguales, usas «tan» con «como»:\n"
+              "> El alquiler es tan caro como en el centro.\n"
+              "! Y recuerda: «bueno» tiene una forma corta, «mejor».",
+        "patterns": [{"label": "más", "form": "más caro que"}, {"label": "igual", "form": "tan grande como"},
+                     {"label": "mejor", "form": "mejor que, no «más bueno que»"}],
+        "en": "To compare two things, use these words: «más, menos, que.» Listen:\n"
+              "> «Este piso es más luminoso que el anterior.»\n"
+              "When both are the same, use these: «tan, como.» Listen:\n"
+              "> «El alquiler es tan caro como en el centro.»\n"
+              "! And remember the short form for better: «mejor.»"}},
 }
 SOURCE_TEXT = """# Lecciones de ejemplo (contenido original escrito para este repositorio)
 ## Unidad 1 – En el mercado

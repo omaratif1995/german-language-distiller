@@ -122,7 +122,7 @@ class CourseAppTests(unittest.TestCase):
         self.assertTrue(all(lang == "en" for lang, text in parts if "anyway" in text or "takes the" in text))
         # one teacher explains: the narrator speaks both languages, a little slower
         self.assertEqual(set(dict(clips[chain[0]].voices).values()), {"de-DE-SeraphinaMultilingualNeural"})
-        self.assertEqual(clips[chain[0]].rate, "-10%")
+        self.assertEqual(clips[chain[0]].rate, "-15%")
 
     def test_a_german_explanation_with_an_english_backup(self):
         (self.root / "narration.json").write_text(json.dumps({"U1": {"g1": {
@@ -137,7 +137,8 @@ class CourseAppTests(unittest.TestCase):
         german, english = clips[unit["explain"]["g1"][0]], clips[unit["explain_en"]["g1"][0]]
         self.assertEqual([lang for lang, _ in german.parts], ["de"])          # one request, so it flows like speech
         self.assertEqual(english.parts[1], ("de", "trotz."))
-        self.assertEqual({german.rate, english.rate}, {"-10%"})
+        self.assertEqual({german.rate, english.rate}, {"-15%"})
+        self.assertTrue(german.timed and english.timed)                      # the card reads along with both
         self.assertIn(german.clip_id, unit["sequence"])                       # the lesson's listening plays German
         self.assertNotIn(english.clip_id, unit["sequence"])
         out = self.root / "app.html"
@@ -146,12 +147,78 @@ class CourseAppTests(unittest.TestCase):
         self.assertIn(f'class="explain-button explain-en" data-chain="{english.clip_id}"', page)
         self.assertIn(f'class="explain-button" data-chain="{german.clip_id}"', page)
 
+    def written_course(self):
+        (self.root / "narration.json").write_text(json.dumps({"U1": {"g1": {
+            "title": "trotz + Genitiv – der Gegensatz",
+            "de": "Mit «trotz» sagst du: Es passiert, aber es ist egal. Hör zu:\n> Trotz des Regens gehen wir.\n"
+                  "! Aber Vorsicht: Nach «trotz» kommt der Genitiv, «trotz des Regens».",
+            "en": "When something happens anyway, German says: «trotz.» Listen:\n> «Trotz des Regens gehen wir.»",
+            "patterns": [{"label": "Muster", "form": "trotz + Genitiv"}]}}}), encoding="utf-8")
+        data = json.loads(self.course_path.read_text(encoding="utf-8"))
+        self.course_path.write_text(json.dumps({**data, "narration": "narration.json"}), encoding="utf-8")
+        return course_audio.load_course(self.course_path)
+
+    def test_the_card_shows_the_explanation_written_out(self):
+        course = self.written_course()
+        clips, plan = course_audio.build_course_plan(course)
+        german = clips[plan["units"]["U1"]["explain"]["g1"][0]]
+        self.assertEqual(german.parts, (("de", "Mit trotz sagst du: Es passiert, aber es ist egal. Hör zu: Trotz des Regens "
+                                               "gehen wir. Aber Vorsicht: Nach trotz kommt der Genitiv, trotz des Regens."),))
+        out = self.root / "app.html"
+        build_course_app.build(course, out, audio=True, placeholder_audio=True)
+        page = out.read_text(encoding="utf-8")
+        card = re.search(r'<article class="rule" id="U1-g1">(.*?)</article>', page, re.S).group(1)
+        self.assertIn("<h3>trotz + Genitiv – der Gegensatz<button", card)      # the card speaks German
+        self.assertIn(f'<div class="say" lang="de" data-clip="{german.clip_id}">', card)
+        self.assertIn('<p class="say-p"><span class="sn">Mit <em class="g">trotz</em> sagst du:', card)
+        self.assertIn('<div class="say-ex"><p><span class="sn">Trotz des Regens gehen wir.</span></p></div>', card)
+        self.assertIn('<p class="say-warn">', card)
+        self.assertIn('<em class="x">trotz des Regens</em>', card)            # a longer piece reads like an example
+        self.assertIn("<summary>Auf Englisch</summary>", card)
+        self.assertIn("<b>Muster:</b> trotz + Genitiv", card)
+        for english in ("Meaning:", "Rule:", "Important:", "<b>pattern:</b>"):
+            self.assertNotIn(english, card)
+        other = re.search(r'<article class="rule" id="U2-g1">(.*?)</article>', page, re.S).group(1)
+        self.assertIn("<b>Meaning:</b>", other)                               # a card without narration stays as it was
+        cards = json.loads(re.search(r"CARDS=(\[.*?\]), ORDER=", page, re.S).group(1).replace("<\\/", "</"))
+        self.assertEqual(cards[1]["f"], "trotz + Genitiv – der Gegensatz")     # Üben asks with the German title
+
+    def test_without_audio_the_explanation_is_still_written(self):
+        out = self.root / "app.html"
+        build_course_app.build(self.written_course(), out, audio=False)
+        card = re.search(r'<article class="rule" id="U1-g1">(.*?)</article>', out.read_text(encoding="utf-8"), re.S).group(1)
+        self.assertIn('<div class="say" lang="de">', card)
+        self.assertNotIn("data-clip", card)
+
+    def test_each_sentence_knows_when_it_is_spoken(self):
+        cache = self.root / "cache"
+        (cache / "clips").mkdir(parents=True)
+        spoken = [(0.05, "Hör"), (0.4, "zu"), (1.3, "Trotz"), (1.7, "des"), (1.9, "Regens"), (2.5, "gehen"), (2.8, "wir")]
+        (cache / "clips" / "a_test.words.json").write_text(json.dumps(spoken), encoding="utf-8")
+        shown = build_course_app.explanation_html("«Hör» zu:\n> Trotz des Regens gehen wir.", "de", None, "a_test", cache)
+        self.assertEqual(re.findall(r'data-at="([\d.]+)"', shown), ["0.05", "1.30"])
+        self.assertIn('<em class="g">Hör</em>', shown)
+        self.assertIn('data-clip="a_test"', shown)
+
     def test_narration_must_be_a_text_or_de_and_en(self):
         (self.root / "narration.json").write_text(json.dumps({"U1": {"g1": {"fr": "Non."}}}), encoding="utf-8")
         data = json.loads(self.course_path.read_text(encoding="utf-8"))
         self.course_path.write_text(json.dumps({**data, "narration": "narration.json"}), encoding="utf-8")
         with self.assertRaisesRegex(course_audio.AudioError, "narration U1 g1"):
             course_audio.narration_notes(course_audio.load_course(self.course_path))
+
+    def test_written_narration_is_checked(self):
+        data = json.loads(self.course_path.read_text(encoding="utf-8"))
+        self.course_path.write_text(json.dumps({**data, "narration": "narration.json"}), encoding="utf-8")
+        for told, error in (({"de": "Mit «trotz sagst du es."}, "close in turn"),
+                            ({"de": "Text.", "patterns": [{"label": "Muster"}]}, "patterns")):
+            (self.root / "narration.json").write_text(json.dumps({"U1": {"g1": told}}), encoding="utf-8")
+            with self.assertRaisesRegex(course_audio.AudioError, error):
+                course_audio.narration_notes(course_audio.load_course(self.course_path))
+        (self.root / "narration.json").write_text(json.dumps({"U1": {"g1": {
+            "de": "Text.", "en": "Listen:\n> «Trotz des Regens» we go."}}}), encoding="utf-8")
+        notes = course_audio.narration_notes(course_audio.load_course(self.course_path))
+        self.assertTrue(any("English example line" in note for note in notes))
 
     def test_app_without_audio(self):
         out = self.root / "app.html"

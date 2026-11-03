@@ -22,7 +22,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from embed_audio import AudioError, lesson_plan, require, synthesize  # noqa: E402
+from embed_audio import AudioError, explanation_blocks, explanation_speech, lesson_plan, require, synthesize  # noqa: E402
 import language  # noqa: E402
 import speech  # noqa: E402
 
@@ -91,21 +91,45 @@ def unit_plan(lesson, voices, narration=None, announcement=None):
     return clips, plan
 
 
+def balanced_marks(text):
+    """«…» open and close in turn, never nested."""
+    depth = 0
+    for char in text:
+        if char in "«»":
+            depth += 1 if char == "«" else -1
+            if depth not in (0, 1):
+                return False
+    return depth == 0
+
+
 def narration_notes(course):
-    """Spoken explanations are keyed by unit id and grammar id; a typo would silently fall back, so refuse it."""
+    """Spoken explanations are keyed by unit id and grammar id; a typo would silently fall back, so refuse it.
+    An explanation is a text (English), or {"de": in the course's language, "en": the English backup, "title" and
+    "patterns" in the course's language for the written card}; the texts are written in blocks (explanation_blocks)."""
     lessons = {u["id"]: json.loads(u["lesson"].read_text(encoding="utf-8-sig")) for u in course["units"]}
-    notes = []
+    notes, name = [], course["profile"]["name"]
     for uid, points in course["narration"].items():
         require(uid in lessons, f"narration names an unknown unit: {uid}")
         grammar = {record["id"] for record in lessons[uid]["grammar"]}
         for gid, told in points.items():
             require(gid in grammar, f"narration names an unknown grammar point: {uid} {gid}")
-            told = {"en": told} if isinstance(told, str) else told
-            require(isinstance(told, dict) and told and set(told) <= {"de", "en"}
-                    and all(isinstance(text, str) and text.strip() for text in told.values()),
-                    f"narration {uid} {gid}: a text, or {{\"de\": the explanation in the language, \"en\": in English}}")
-            notes += [f"{uid} {gid}: '{word}' looks {course['profile']['name']} but is not marked «…»"
-                      for word in speech.unmarked_german(told.get("en", ""))]
+            told, where = ({"en": told} if isinstance(told, str) else told), f"narration {uid} {gid}"
+            require(isinstance(told, dict) and set(told) <= {"de", "en", "title", "patterns"} and (told.get("de") or told.get("en"))
+                    and all(isinstance(told[key], str) and told[key].strip() for key in ("de", "en", "title") if key in told),
+                    f'{where}: a text, or {{"de": the explanation in the language, "en": in English, "title", "patterns"}}')
+            patterns = told.get("patterns", [])
+            require(isinstance(patterns, list) and all(isinstance(p, dict) and set(p) == {"label", "form"}
+                                                       and all(isinstance(v, str) and v.strip() for v in p.values())
+                                                       for p in patterns),
+                    f'{where}: patterns are a list of {{"label", "form"}}')
+            for key in ("de", "en"):
+                require(balanced_marks(told.get(key, "")), f"{where}: «…» do not close in turn in {key!r}")
+            english = told.get("en", "")
+            notes += [f"{uid} {gid}: '{word}' looks {name} but is not marked «…»"
+                      for word in speech.unmarked_german(explanation_speech(english, True))]
+            notes += [f"{uid} {gid}: an English example line is not all «…», so part of it is read as English: {body[:40]}"
+                      for kind, body in explanation_blocks(english)
+                      if kind == "ex" and not (body.startswith("«") and body.endswith("»") and body.count("«") == 1)]
     return notes
 
 

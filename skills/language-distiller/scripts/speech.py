@@ -288,7 +288,8 @@ class Clip:
     parts: tuple            # ((lang, spoken text), ...)
     voices: tuple = field(default=())
     pauses: tuple = ()      # seconds of silence after each part but the last
-    rate: str = ""          # speaking rate for the voice service ("-10%": a little slower), "" = normal
+    rate: str = ""          # speaking rate for the voice service ("-15%": a little slower), "" = normal
+    timed: bool = False     # keep the time of every spoken word (clips/<id>.words.json), to read along
 
     @property
     def text(self):
@@ -303,9 +304,10 @@ def _pause_after(chunk, after=""):
     return 0.45 if end in ".!?。！？؟" else 0.3 if end in ":;：；؛" else 0.2 if end in ",–—、，،" else 0.08
 
 
-def make_clip(text, kind, voices, rate=""):
+def make_clip(text, kind, voices, rate="", timed=False):
     """Build a clip for `text` of the given kind ("de", "en", "mix-de", "marked"), spoken by `voices` (one per
-    language; the same voice for both makes one speaker) at `rate` ("-10%" is a little slower)."""
+    language; the same voice for both makes one speaker) at `rate` ("-15%" is a little slower). A `timed` clip
+    also keeps when each word is spoken (a written explanation lights up its sentences); the id stays the same."""
     require(kind in ("de", "en", "mix-de", "marked"), f"unknown text kind {kind}")
     if kind == "de":
         raw = [("de", normalize(text))]
@@ -322,7 +324,7 @@ def make_clip(text, kind, voices, rate=""):
     key = json.dumps([[voices[lang], words] for lang, words in parts] + ([list(pauses)] if pauses else [])
                      + ([rate] if rate else []), ensure_ascii=False)
     return Clip("a_" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:20], parts,
-                tuple(sorted((lang, voices[lang]) for lang in {lang for lang, _ in parts})), pauses, rate)
+                tuple(sorted((lang, voices[lang]) for lang in {lang for lang, _ in parts})), pauses, rate, timed)
 
 
 def segment_id(voice, spoken, rate=""):
@@ -339,8 +341,59 @@ def ffmpeg_exe():
         return found
 
 
-_TRIM = ("silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.02,areverse,"
-         "silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.02,areverse")
+_LEAD = "silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.02"
+_TRIM = f"{_LEAD},areverse,{_LEAD},areverse"
+SAMPLE_RATE = 24000                 # the voice service's MP3s, and every clip joined from them
+
+
+def _words_file(segment):
+    return segment.with_suffix(".words.jsonl")      # the service's word timings, beside a segment's MP3
+
+
+def _samples(path, ff, audio_filter=None):
+    """How many samples an MP3 decodes to at SAMPLE_RATE, after an optional ffmpeg filter (_LEAD, _TRIM)."""
+    command = [ff, "-hide_banner", "-loglevel", "error", "-i", str(path)] + (["-af", audio_filter] if audio_filter else [])
+    command += ["-f", "s16le", "-ac", "1", "-ar", str(SAMPLE_RATE), "-"]
+    return len(subprocess.run(command, check=True, capture_output=True).stdout) // 2
+
+
+def _boundaries(path):
+    """[(seconds, word)] from the service's JSON lines (offsets in 100 ns)."""
+    words = []
+    for line in path.read_text(encoding="utf-8").splitlines() if path.is_file() else []:
+        item = json.loads(line) if line.strip() else {}
+        if item.get("type") == "WordBoundary":
+            words.append((item["offset"] / 1e7, item["text"]))
+    return words
+
+
+def clip_words(item, paths, ff=None, measure=_samples):
+    """When each word of a clip is spoken, [(seconds, word)]. One segment keeps the service's own timings. Joined
+    segments (_join) lose their lead-in silence, and each starts after the trimmed parts and pauses before it."""
+    marks = [_boundaries(_words_file(path)) for path in paths]
+    if len(paths) == 1:
+        return marks[0]
+    words, start = [], 0.0
+    for index, (path, own) in enumerate(zip(paths, marks)):
+        lead = (measure(path, ff) - measure(path, ff, _LEAD)) / SAMPLE_RATE
+        words += [(start + max(0.0, at - lead), word) for at, word in own]
+        start += measure(path, ff, _TRIM) / SAMPLE_RATE + (item.pauses[index] if index < len(item.pauses) else 0.0)
+    return words
+
+
+def clip_timings(cache_dir, clip_id):
+    """The word timings kept with a timed clip, [(seconds, word)], or [] when it has none."""
+    path = Path(cache_dir) / "clips" / f"{clip_id}.words.json"
+    return [(at, word) for at, word in json.loads(path.read_text(encoding="utf-8"))] if path.is_file() else []
+
+
+def _communicate(edge_tts, text, voice, rate, marks):
+    if marks:                       # edge-tts 7 reports sentences unless asked for words; older releases only words
+        try:
+            return edge_tts.Communicate(text=text, voice=voice, rate=rate, boundary="WordBoundary")
+        except TypeError:
+            pass
+    return edge_tts.Communicate(text=text, voice=voice, rate=rate)
 
 
 def _join(paths, pauses, target, ff):
@@ -358,7 +411,8 @@ def _join(paths, pauses, target, ff):
 
 async def synthesize(clips, cache_dir, voices, concurrency=6):
     """Synthesize every clip into cache_dir/clips/<id>.mp3 (segments cached in cache_dir/segments). Each clip speaks
-    with its own voices and rate (a grammar narrator, a little slower); `voices` covers clips made without them."""
+    with its own voices and rate (a grammar narrator, a little slower); `voices` covers clips made without them.
+    A timed clip also gets clips/<id>.words.json, when each of its words is spoken (see clip_words)."""
     try:
         import edge_tts
     except ImportError as error:
@@ -371,33 +425,41 @@ async def synthesize(clips, cache_dir, voices, concurrency=6):
     semaphore = asyncio.Semaphore(concurrency)
     joins = asyncio.Semaphore(4)
     downloads = {}                              # one download per segment, however many clips share it
+    timed = {segment_id({**voices, **dict(c.voices)}[lang], spoken, c.rate)
+             for c in clips.values() if c.timed for lang, spoken in c.parts}
 
     def segment(voice, spoken, rate):
         key = segment_id(voice, spoken, rate)
         if key not in downloads:
-            downloads[key] = asyncio.ensure_future(fetch(voice, spoken, rate, seg_dir / f"{key}.mp3"))
+            downloads[key] = asyncio.ensure_future(fetch(voice, spoken, rate, seg_dir / f"{key}.mp3", key in timed))
         return downloads[key]
 
-    async def fetch(voice, spoken, rate, path):
-        if path.exists() and path.stat().st_size > 256:
+    async def fetch(voice, spoken, rate, path, marks):
+        words = _words_file(path)
+        if path.exists() and path.stat().st_size > 256 and (not marks or words.exists()):
             return path
         async with semaphore:
             last = None
             for attempt in range(4):
                 try:
-                    temporary = path.with_suffix(f".part{attempt}")
-                    await edge_tts.Communicate(text=spoken, voice=voice, rate=rate or "+0%").save(str(temporary))
+                    temporary, told = path.with_suffix(f".part{attempt}"), words.with_suffix(f".part{attempt}")
+                    await _communicate(edge_tts, spoken, voice, rate or "+0%", marks).save(
+                        str(temporary), str(told) if marks else None)
                     require(temporary.stat().st_size > 256, "empty audio returned")
+                    if marks:
+                        told.replace(words)
                     temporary.replace(path)
                     return path
                 except Exception as error:      # network and provider errors vary by release
                     last = error
+                    temporary.unlink(missing_ok=True)
+                    told.unlink(missing_ok=True)
                     await asyncio.sleep(1.0 * (attempt + 1))
             raise SpeechError(f"TTS failed for {spoken[:60]!r}: {last}")
 
     async def clip(item):
-        target = clip_dir / f"{item.clip_id}.mp3"
-        if target.exists() and target.stat().st_size > 256:
+        target, words = clip_dir / f"{item.clip_id}.mp3", clip_dir / f"{item.clip_id}.words.json"
+        if target.exists() and target.stat().st_size > 256 and (not item.timed or words.exists()):
             return target
         own = {**voices, **dict(item.voices)}
         paths = [await segment(own[lang], spoken, item.rate) for lang, spoken in item.parts]
@@ -407,6 +469,9 @@ async def synthesize(clips, cache_dir, voices, concurrency=6):
         else:
             async with joins:
                 await asyncio.to_thread(_join, paths, item.pauses, temporary, ff)
+        if item.timed:                          # written with the clip it describes
+            found = await asyncio.to_thread(clip_words, item, paths, ff)
+            words.write_text(json.dumps([[round(at, 2), word] for at, word in found], ensure_ascii=False), encoding="utf-8")
         temporary.replace(target)
         return target
 

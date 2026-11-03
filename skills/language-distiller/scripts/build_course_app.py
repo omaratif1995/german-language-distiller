@@ -27,9 +27,9 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from embed_audio import (AUDIO_CSS, LISTEN_HTML, LISTEN_JS, AudioError, examples_order, inject_example_buttons,  # noqa: E402
-                         inject_story_audio, listening_order, number_examples, play_button, require, story_order,
-                         transform_card)
+from embed_audio import (AUDIO_CSS, LISTEN_HTML, LISTEN_JS, AudioError, examples_order, explanation_sentences,  # noqa: E402
+                         inject_example_buttons, inject_story_audio, listening_order, number_examples, play_button,
+                         require, sentence_times, story_order, transform_card)
 from course_audio import build_course_plan, exact_term, ffmpeg_exe, load_course  # noqa: E402
 import language  # noqa: E402
 import speech  # noqa: E402
@@ -90,6 +90,70 @@ def add_audio_buttons(page, lesson, unit_plan, used, prof=None, ui=None):
         used.add(controls["story-title"])
         heads = {rec["id"]: controls[f'{rec["id"]}-head'] for rec in lesson["vocabulary"] + lesson["redemittel"]}
         page = inject_story_audio(page, unit_plan, heads, ui)
+    return page
+
+
+def explanation_html(text, lang, prof, clip="", cache=None):
+    """One written explanation: a <p> per paragraph, one box for a run of examples, a careful note marked ⚠, and
+    every sentence a span. With the clip's word timings, each span knows when it is spoken (data-at, seconds)."""
+    prof = prof or language.profile("de")
+    blocks = explanation_sentences(text, prof)
+    words = speech.clip_timings(cache, clip) if clip and cache else []
+    times = iter(sentence_times([s for _, group in blocks for s in group], words) if words else [])
+
+    def sentence(text, example):
+        shown = html.escape(text)
+        if example:                                   # the box already says it is the language's own
+            shown = shown.replace("«", "").replace("»", "")
+        else:                                         # a form or a word in bold, a longer piece like an example
+            shown = re.sub(r"«(.+?)»", lambda m: f'<em class="{"x" if language.word_count(prof, m.group(1)) > 2 else "g"}">'
+                                                 f'{m.group(1)}</em>', shown)
+        at = next(times, None)
+        stamp = "" if at is None else f' data-at="{at:.2f}"'
+        return f'<span class="sn"{stamp}>{shown}</span>'
+
+    parts, examples = [], []
+    for kind, group in blocks + [("end", [])]:
+        if kind != "ex" and examples:
+            parts.append(f'<div class="say-ex">{"".join(examples)}</div>')
+            examples = []
+        if kind == "ex":
+            examples.append("<p>" + " ".join(sentence(s, True) for s in group) + "</p>")
+        elif kind != "end":
+            parts.append(f'<p class="say-{kind}">' + " ".join(sentence(s, False) for s in group) + "</p>")
+    source = f' data-clip="{clip}"' if clip else ""        # the clip whose playback lights it up
+    return f'<div class="say" lang="{html.escape(lang)}"{source}>{"".join(parts)}</div>'
+
+
+def write_explanations(page, lesson, narration, unit_plan=None, cache=None, prof=None, ui=None):
+    """A grammar card whose narration speaks the course's language shows it written out, in place of the short
+    English meaning, rule and contrast: the narration's blocks, its own title and patterns when it gives them, and
+    the English backup folded away («Auf Englisch»). With audio, the sentence being read lights up."""
+    prof, ui = prof or language.profile(lesson.get("target_language", "de")), ui or {}
+    english = language.profile("de")                  # English sentences start like German ones, with a capital
+    for rec in lesson["grammar"]:
+        told = (narration or {}).get(rec["id"])
+        if not isinstance(told, dict) or not told.get("de"):
+            continue
+        clips = {lang: ((unit_plan or {}).get(key, {}).get(rec["id"]) or [""])[0]
+                 for lang, key in (("de", "explain"), ("en", "explain_en"))}
+
+        def card(block, rec=rec, told=told, clips=clips):
+            say = explanation_html(told["de"], prof["code"], prof, clips["de"], cache)
+            if told.get("en"):
+                say += (f'<details class="say-en"><summary>{html.escape(ui.get("Auf Englisch", "Auf Englisch"))}</summary>'
+                        f'{explanation_html(told["en"], "en", english, clips["en"], cache)}</details>')
+            block, n = re.subn(r"<p><b>Meaning:</b>.*?</p><p><b>Rule:</b>.*?</p>", lambda m: say, block, count=1, flags=re.S)
+            require(n == 1, f"cannot place the written explanation for {rec['id']}")
+            block = re.sub(r'<p class="contrast">.*?</p>', "", block, count=1, flags=re.S)
+            if told.get("title"):
+                block = re.sub(r"<h3>.*?</h3>", lambda m: f"<h3>{html.escape(told['title'])}</h3>", block, count=1, flags=re.S)
+            if told.get("patterns"):
+                rows = "".join(f'<p><b>{html.escape(p["label"])}:</b> {html.escape(p["form"])}</p>' for p in told["patterns"])
+                block = re.sub(r'<div class="patterns">.*?</div>', lambda m: f'<div class="patterns">{rows}</div>', block,
+                               count=1, flags=re.S)
+            return block
+        page = transform_card(page, "rule", rec["id"], card)
     return page
 
 
@@ -226,6 +290,22 @@ APP_CSS = r"""
        font-weight:700;border-radius:999px;padding:4px 10px;margin-left:8px;cursor:pointer;white-space:nowrap}
   .explain-button.is-playing{background:#0f766e;border-color:#6ee7b7}
   .explain-en{margin-left:5px;padding:4px 8px;font-size:12px;letter-spacing:.04em;opacity:.85}
+  .say{margin:4px 0 10px}
+  .say p{margin:0 0 8px;font-size:15px;line-height:1.6}
+  .say .say-ex{margin:0 0 8px;padding:5px 10px;background:var(--ex-bg);border-left:3px solid var(--ex-bar);border-radius:7px;
+       color:var(--ex-ink);font-style:italic}
+  .say .say-ex p{margin:2px 0}
+  .say .say-warn{padding:5px 10px;background:rgba(242,211,107,.07);border-left:3px solid var(--yellow);border-radius:7px}
+  .say .say-warn::before{content:"⚠ ";color:var(--yellow)}
+  .say em{font-style:normal}
+  .say em.g{font-weight:700;color:#f5e6b3}
+  .say em.x{font-style:italic;color:#a9d6e0}
+  .say .sn{border-radius:5px;padding:1px 0;transition:background .25s,color .25s;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+  .say .sn.lit{background:rgba(242,211,107,.22);color:#fff}
+  details.say-en{margin:0 0 10px;padding-top:6px;border-top:1px solid var(--line)}
+  details.say-en summary{cursor:pointer;color:var(--muted);font-size:13.5px;padding:2px 0}
+  details.say-en .say{margin-bottom:2px}
+  details.say-en .say p{font-size:14.5px}
   .mode-practice .lernen,.mode-games .lernen{display:none}
   #practice,#games{display:none}
   .mode-practice #practice,.mode-games #games{display:block}
@@ -382,7 +462,7 @@ APP_CSS = r"""
 
 # A right-to-left language: cards, game words and the listening line take their direction from their first letter
 # (as on the sheet, study_pack.RTL_CSS), and the words of Satzbau line up from the right.
-RTL_APP_CSS = (".front,.q-mean,.q-when,.b-cue,.b-cell,.b-fb div,.s-word,.s-tile,.a-word,.r-opt,.r-fb div,.p-card,#now-t"
+RTL_APP_CSS = (".front,.q-mean,.q-when,.b-cue,.b-cell,.b-fb div,.s-word,.s-tile,.a-word,.r-opt,.r-fb div,.p-card,#now-t,.say p"
                "{unicode-bidi:plaintext}.r-opt{text-align:start}.s-line,.s-tiles{direction:rtl}")
 
 APP_JS = r"""
@@ -509,7 +589,7 @@ __LISTEN__
     else if(a==='prev') browseMove(-1); else if(a==='nxt') browseMove(1); });
   /* tap = peek, swipe right = ✓, swipe left = ✗; after ✗ a swipe either way = Weiter */
   var sx=0, sy=0, dx=0, dragging=false;
-  fc.addEventListener('pointerdown',function(e){ if(e.target.closest('button')||view!=='card') return; dragging=true; sx=e.clientX; sy=e.clientY; dx=0; fc.classList.add('dragging');
+  fc.addEventListener('pointerdown',function(e){ if(e.target.closest('button,details')||view!=='card') return; dragging=true; sx=e.clientX; sy=e.clientY; dx=0; fc.classList.add('dragging');
     try{ fc.setPointerCapture(e.pointerId); }catch(err){} });   /* a mouse swipe may leave the window */
   fc.addEventListener('pointermove',function(e){ if(!dragging) return; dx=e.clientX-sx; var dy=e.clientY-sy;
     if(!S.browse && Math.abs(dx)>Math.abs(dy)){ fc.style.transform='translateX('+dx+'px) rotate('+(dx/28)+'deg)';
@@ -522,7 +602,7 @@ __LISTEN__
     if(Math.abs(dx)<10 && Math.abs(dy)<10) peek(); }
   fc.addEventListener('pointerup',end); fc.addEventListener('pointercancel',function(){ dragging=false; fc.classList.remove('dragging','hint-good','hint-again'); fc.style.transform=''; });
   d.addEventListener('keydown',function(e){ if(!d.body.classList.contains('mode-practice')||/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)||e.repeat||e.ctrlKey||e.metaKey||e.altKey) return;
-    var k=e.key, onButton=!!(e.target.closest && e.target.closest('button')), confirm=(k===' '||k==='Enter') && !onButton;
+    var k=e.key, onButton=!!(e.target.closest && e.target.closest('button,summary')), confirm=(k===' '||k==='Enter') && !onButton;
     if((k==='Backspace'||k==='z'||k==='Z') && undo){ e.preventDefault(); doUndo(); return; }
     if(view==='round'||view==='paused'){ if(confirm){ e.preventDefault(); next(); } return; }
     if(view!=='card') return;
@@ -864,6 +944,8 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
         lesson = json.loads(unit["lesson"].read_text(encoding="utf-8-sig"))
         css = css or re.search(r"<style>(.*?)</style>", page, re.S).group(1)
         unit_plan = plan["units"][uid] if audio else None
+        page = write_explanations(page, lesson, course.get("narration", {}).get(uid), unit_plan,
+                                  course["cache"] if audio and not placeholder_audio else None, prof, ui)
         if audio:
             page = add_audio_buttons(page, lesson, unit_plan, used_german, prof, ui)
             sequences[uid] = listening_order(f"{uid}-", lesson, unit_plan)

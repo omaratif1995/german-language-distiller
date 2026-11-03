@@ -42,23 +42,34 @@ Multilingual neural voices guess the language of each request, and the Edge serv
   It also reads course-book notation: `A:` and `CH:` (Austrian and Swiss variants), `etw.`, `jdn.`, `(e)`, `→` and `…sten`.
 - Forms lines (`abschließen = to complete`) are German notes; the side right of `=` is read as an English gloss.
 - Each run is synthesized on its own. The clip trims each run's built-in silence and pauses by punctuation (also a comma or colon right after a German word), so it sounds like one speaker.
-- Grammar explanations have **one narrator**: the profile's multilingual voice (German: `de-DE-SeraphinaMultilingualNeural`, at `-10%`) reads the German and the English runs alike, so an explanation sounds like one teacher, not two people taking turns. `voices.narrator` in `course.json` can name another one.
+- Grammar explanations have **one narrator**: the profile's multilingual voice (German: `de-DE-SeraphinaMultilingualNeural`, at `-15%`) reads the German and the English runs alike, so an explanation sounds like one teacher, not two people taking turns. `voices.narrator` in `course.json` can name another one.
 
 Before synthesizing, read the `plan` output and spot-check `<cache>/plan.json`, where `texts` shows every clip as `[de] …` and `[en] …` runs. Fix a mis-split note in the lesson data, not in the audio.
 
 ## Spoken grammar explanations (narration.json)
 
-Without narration, `🔊 Erklärung` reads the grammar card itself: title, meaning, rule, patterns and contrast. That is correct, but it sounds like a list. For natural audio, write `narration.json` next to `course.json`, keyed by unit id and grammar id, with two versions of each point:
+Without narration, `🔊 Erklärung` reads the grammar card itself: title, meaning, rule, patterns and contrast. That is correct, but it sounds like a list. For natural audio, write `narration.json` next to `course.json`, keyed by unit id and grammar id, with two versions of each point, written in short blocks:
 
 ```json
 {"L01": {"g01": {
-  "de": "Für einen einzigen Moment in der Vergangenheit, oder für eine ganze Zeit in deinem Leben, sagt man: als. Hör zu: Als ich ein Kind war, hatten wir einen Hund. …",
-  "en": "«Als»: one event, or one period, in the past. … Listen: «Als ich ein Kind war, hatten wir einen Hund.» …"}}}
+  "title": "als – ein Ereignis oder eine Zeit in der Vergangenheit",
+  "de": "Für einen einzigen Moment in der Vergangenheit, oder für eine ganze Zeit in deinem Leben, sagt man: «als». Hör zu:\n> Als ich ein Kind war, hatten wir einen Hund.\nNach «als» steht das Verb ganz am Ende: «als ich ein Kind war». …\n! Aber Vorsicht: «Als» gibt es nur in der Vergangenheit. …",
+  "patterns": [{"label": "als-Satz zuerst", "form": "Als + Subjekt … Verb (Ende), Verb + Subjekt …"}],
+  "en": "«Als»: one event, or one period, in the past. … Listen:\n> «Als ich ein Kind war, hatten wir einen Hund.»\n…"}}}
 ```
 
 - **`de`, the explanation in the target language,** is what `🔊 Erklärung`, *Ganze Lektion* and the MP3 episodes play: one voice in one language, read in one piece, so it flows like a teacher talking. Write it at the learner's level: short sentences, *du*, the grammar words the course uses (*Nebensatz*, *Verb am Ende*, *Genitiv*), 60–110 words. Name a word you talk about as a word ("Das Wort deshalb …"), so it is not heard as part of the sentence.
 - **`en`, an English backup,** waits behind a small **EN** button for days when the target-language version is too hard. Mark every target-language word, phrase or sentence with «…», and put it **after a colon or a full stop, never inside an English sentence**: "For the present, you say: «wenn.»", not "Use «wenn» for the present". The narrator then changes language at a natural pause. Put the full stop inside the marks («wenn.»).
+- **`title` and `patterns`** (optional) put the rest of the app's card in the target language: they take the place of the lesson's English title and pattern lines there. Keep the lesson's forms and translate only the labels and grammar words (*Subjekt*, *Verb (Ende)*). The sheets keep the reviewed lesson as it is.
 - A plain string instead of the two versions is an English-only explanation (older narration files).
+
+**Written in blocks, read along.** On the app's grammar card, the `de` explanation takes the place of the short English meaning, rule and contrast, and the `en` one is folded away under «Auf Englisch». The sentence being spoken lights up, and the page follows it while the learner reads along. Write each text in lines:
+
+- a plain line is a paragraph;
+- `> ` is an example (consecutive lines share one box);
+- `! ` is the trap, shown with ⚠.
+
+Mark the words you talk about with «…»: a form or a short word shows in bold, a longer piece in italics. Keep each «…» on one line. The voice reads the lines as one text, without the marks (in `en`, the marks still switch the language). An English example line is all one «…».
 
 For both versions:
 
@@ -66,9 +77,11 @@ For both versions:
 - **No symbols:** leave out `+`, `→` and `/`. Show endings through short phrases (say «am größten», not "-sten"); a word like *-ung* is read as "ung".
 - **No wrong German aloud:** describe the mistake instead of saying it, because learners copy what they hear.
 - **Original examples:** quote the sheet's own examples or new ones, never the source's, and check the narration for six-word runs shared with the source like any example.
-- **A little slower:** the narrator speaks at the profile's rate (German `-10%`, about 8 % longer), which gives a grammar point time to land; beyond `-15%` it starts to drag.
+- **A little slower:** the narrator speaks at the profile's rate (German `-15%`, about 14 % longer than normal speech), which gives a grammar point time to land and leaves time to read along; at `-20%` it starts to drag.
 
-Without a narrator voice in the profile, `de` is read by the target voice and the `en` runs alternate between the two voices. `plan` refuses narration for unknown unit or grammar ids or with keys other than `de` and `en`, and lists unmarked words in `en` that look German.
+Without a narrator voice in the profile, `de` is read by the target voice and the `en` runs alternate between the two voices. `plan` refuses narration for unknown unit or grammar ids, keys other than `de`, `en`, `title` and `patterns`, patterns that are not `{"label", "form"}`, and «…» that do not close in turn. It lists unmarked words in `en` that look German, and English example lines that are not all one «…».
+
+The narration clips are **timed**: `synth` asks the voice service for the time of every word and keeps it beside the clip (`<cache>/clips/<id>.words.json`); in a clip joined from runs, each run's times move by the silence trimmed from it. The app matches the written sentences to the spoken words letter by letter, so a symbol read out, or a word said differently, does not shift a sentence. A clip made before timings existed is made again.
 
 ## Audio commands
 
@@ -96,7 +109,7 @@ Requirements: `pip install edge-tts pyspellchecker imageio-ffmpeg` (or a system 
 **Lernen**
 - All reviewed sheets in course order, a unit picker with ‹ ›, and a search over all cards.
 - 🔊 on every German headword, example, phrase and variant. **A tap repeats**: by default the clip plays again and again, with a short pause, until the learner taps it again or presses ⏹. The listening panel switches this to 1× or 3×.
-- `🔊 Erklärung` on each grammar point plays its spoken explanation once.
+- `🔊 Erklärung` on each grammar point plays its spoken explanation once. With narration, the card shows it written out, and the sentence being spoken lights up (also during *Ganze Lektion*); **EN** plays the English one and opens it under «Auf Englisch».
 - The **Geschichte** at the end of each unit: a **🔊 Ganze Geschichte** button on the story header to play the whole story straight through, a 🔊 per paragraph, and a tap on any sentence repeats that sentence. A tap on an underlined word shows its meaning and speaks it.
 - **🎧 Anhören** opens a small panel in the unit's header:
   - **▶ Weiter** (once a session was stopped): goes on where it stopped;

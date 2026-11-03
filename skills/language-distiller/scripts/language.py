@@ -127,7 +127,7 @@ def sentence_rules(prof):
 
 def narrator(prof):
     """The voice that explains grammar, in the target language and in English alike, and how fast:
-    {"narrator": voice, "narrator_rate": "-10%"}; {} when the profile names none (then each language keeps its voice)."""
+    {"narrator": voice, "narrator_rate": "-15%"}; {} when the profile names none (then each language keeps its voice)."""
     found = prof.get("narrator") or {}
     return {"narrator": found["voice"], "narrator_rate": found.get("rate", "")} if found.get("voice") else {}
 
@@ -149,7 +149,7 @@ UI_EN = {
     "Lektion wählen": "Choose a lesson", "Nächste Lektion": "Next lesson", "Suchen…": "Search…", "Suchen": "Search",
     "Audio, Üben und Spielen brauchen einen Browser mit JavaScript.": "Audio, practice and games need a browser with JavaScript.",
     "Karte": "card", "Karten": "cards", "gefunden": "found", "Lektionen": "Lessons",
-    "🎧 Anhören": "🎧 Listen", "🔊 Erklärung": "🔊 Explanation",
+    "🎧 Anhören": "🎧 Listen", "🔊 Erklärung": "🔊 Explanation", "Auf Englisch": "In English",
     "Ganze Geschichte anhören": "Listen to the whole story", "🔊 Ganze Geschichte": "🔊 Whole story",
     "Absatz anhören": "Listen to the paragraph",
     # Üben

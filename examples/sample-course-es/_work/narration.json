@@ -1,14 +1,44 @@
 {
  "S1": {
   "g1": {
-   "de": "Cuando ya sabes de qué hablas, no repites la palabra. La cambias por una palabra corta: lo, la, los o las. Va justo antes del verbo: Los compro. Con un infinitivo, también puedes ponerla al final: Voy a probarlo. Significa lo mismo que: Lo voy a probar. Pero cuidado: le y les son para la persona que recibe algo, no para la cosa.",
-   "en": "When it's clear what you're talking about, Spanish replaces the thing with a short word: «lo, la, los, las.» It goes right before the verb. Listen: «Los compro.» With an infinitive, you can also hang it on the end: «Voy a probarlo.» That means the same as: «Lo voy a probar.» Careful. For the person who receives something, Spanish uses other words: «le, les.»"
+   "title": "Pronombres de objeto directo: lo, la, los, las",
+   "de": "Cuando ya sabes de qué hablas, no repites la palabra. La cambias por una palabra corta: «lo», «la», «los» o «las». Va justo antes del verbo:\n> Los compro.\nCon un infinitivo, también puedes ponerla al final: «Voy a probarlo». Significa lo mismo que: «Lo voy a probar».\n! Pero cuidado: «le» y «les» son para la persona que recibe algo, no para la cosa.",
+   "patterns": [
+    {
+     "label": "antes del verbo",
+     "form": "Los compro."
+    },
+    {
+     "label": "con infinitivo",
+     "form": "Voy a probarlo. = Lo voy a probar."
+    },
+    {
+     "label": "femenino plural",
+     "form": "Las llevo en la cesta."
+    }
+   ],
+   "en": "When it's clear what you're talking about, Spanish replaces the thing with a short word: «lo, la, los, las.» It goes right before the verb. Listen:\n> «Los compro.»\nWith an infinitive, you can also hang it on the end: «Voy a probarlo.» That means the same as: «Lo voy a probar.»\n! Careful. For the person who receives something, Spanish uses other words: «le, les.»"
   }
  },
  "S2": {
   "g1": {
-   "de": "Para comparar dos cosas, usas más o menos con que: Este piso es más luminoso que el anterior. Cuando las dos cosas son iguales, usas tan con como: El alquiler es tan caro como en el centro. Y recuerda las formas cortas: no se dice más bueno, sino mejor.",
-   "en": "To compare two things, use these words: «más, menos, que.» Listen: «Este piso es más luminoso que el anterior.» When both are the same, use these: «tan, como.» Listen: «El alquiler es tan caro como en el centro.» And remember the short form for better: «mejor.»"
+   "title": "Comparaciones: más … que, tan … como",
+   "de": "Para comparar dos cosas, usas «más» o «menos» con «que»:\n> Este piso es más luminoso que el anterior.\nCuando las dos cosas son iguales, usas «tan» con «como»:\n> El alquiler es tan caro como en el centro.\n! Y recuerda: «bueno» tiene una forma corta, «mejor».",
+   "patterns": [
+    {
+     "label": "más",
+     "form": "más caro que"
+    },
+    {
+     "label": "igual",
+     "form": "tan grande como"
+    },
+    {
+     "label": "mejor",
+     "form": "mejor que, no «más bueno que»"
+    }
+   ],
+   "en": "To compare two things, use these words: «más, menos, que.» Listen:\n> «Este piso es más luminoso que el anterior.»\nWhen both are the same, use these: «tan, como.» Listen:\n> «El alquiler es tan caro como en el centro.»\n! And remember the short form for better: «mejor.»"
   }
  }
 }

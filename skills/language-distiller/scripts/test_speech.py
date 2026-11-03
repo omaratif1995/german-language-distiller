@@ -54,6 +54,29 @@ class SpeechTests(unittest.TestCase):
         self.assertEqual(speech.segment_id("de-voice", "Hör gut zu."),       # the cache of normal clips stays valid
                          "s_" + __import__("hashlib").sha256("de-voice\0Hör gut zu.".encode()).hexdigest()[:20])
 
+    def test_a_timed_clip_keeps_its_id(self):
+        plain, timed = (speech.make_clip("Hör gut zu.", "de", VOICES, "-15%", flag) for flag in (False, True))
+        self.assertEqual(plain.clip_id, timed.clip_id)                       # timings come with it; the audio is the same
+        self.assertTrue(timed.timed and not plain.timed)
+
+    def test_word_timings_of_joined_segments(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as folder:
+            paths = [Path(folder) / f"s{i}.mp3" for i in range(2)]
+            for path, words in zip(paths, ([(1_500_000, "Listen")], [(2_000_000, "Als"), (6_000_000, "ich")])):
+                path.write_bytes(b"x")
+                speech._words_file(path).write_text("\n".join(json.dumps({"type": "WordBoundary", "offset": at, "text": word})
+                                                              for at, word in words), encoding="utf-8")
+            # each segment: 1.0 s decoded, 0.1 s lead-in, 0.8 s once trimmed; 0.3 s of pause after the first
+            length = {None: 24000, speech._LEAD: 21600, speech._TRIM: 19200}
+            item = speech.make_clip("Listen: «Als ich.»", "marked", VOICES, timed=True)
+            found = speech.clip_words(item, paths, measure=lambda path, ff, f=None: length[f])
+        self.assertEqual([word for _, word in found], ["Listen", "Als", "ich"])
+        self.assertEqual([round(at, 2) for at, _ in found], [0.05, round(0.8 + item.pauses[0] + 0.1, 2),
+                                                             round(0.8 + item.pauses[0] + 0.5, 2)])
+
     @NEEDS_DICTS
     def test_forms_lines_keep_english_glosses_english(self):
         segs = parts("Plural: die Abschlüsse · abschließen = to complete", "mix-de")

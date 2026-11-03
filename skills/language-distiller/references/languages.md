@@ -12,7 +12,7 @@ Everything the skill does is the same for every language, except what is in the 
 |---|---|---|
 | `code`, `name`, `native` | the language code, its English name (used in labels such as "Play German example" and "Build the Spanish sentence") and its own name | `de`, German, Deutsch |
 | `voice` | the neural voice for the target language | `de-DE-KatjaNeural` |
-| `narrator` | optional: `{"voice", "rate"}` of the voice that explains grammar in both languages, a multilingual one (`edge-tts --list-voices`, "Multilingual" in its name), so one person speaks the target language and English; `rate` a little slower | `de-DE-SeraphinaMultilingualNeural`, `-10%` |
+| `narrator` | optional: `{"voice", "rate"}` of the voice that explains grammar in both languages, a multilingual one (`edge-tts --list-voices`, "Multilingual" in its name), so one person speaks the target language and English; `rate` a little slower | `de-DE-SeraphinaMultilingualNeural`, `-15%` |
 | `sections` | the sheet's section names, also spoken as section titles: `vocabulary`, `grammar`, `redemittel`, `story` | Wortschatz, Grammatik, Redemittel, Geschichte |
 | `translation` | the label that unfolds a story paragraph's translation | Übersetzung |
 | `articles` | the articles a noun card can carry; `[]` for a language without articles (then nouns need none and the app has no article game) | der, die, das |

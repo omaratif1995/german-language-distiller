@@ -5,7 +5,7 @@
   "voice": "de-DE-KatjaNeural",
   "narrator": {
     "voice": "de-DE-SeraphinaMultilingualNeural",
-    "rate": "-10%"
+    "rate": "-15%"
   },
   "sections": {
     "vocabulary": "Wortschatz",

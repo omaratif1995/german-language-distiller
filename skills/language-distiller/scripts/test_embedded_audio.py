@@ -84,6 +84,21 @@ class EmbeddedAudioTests(unittest.TestCase):
         self.assertEqual(embed_audio.speakable("Subjekt + werden + … + Partizip II"),
                          "Subjekt, werden, Partizip zwei")
 
+    def test_a_written_explanation_is_read_as_one_text(self):
+        text = "Nach «als» steht das Verb am Ende. Hör zu:\n> Als ich klein war, …\n\n! Aber Vorsicht: nur einmal."
+        self.assertEqual(embed_audio.explanation_blocks(text), [("p", "Nach «als» steht das Verb am Ende. Hör zu:"),
+                                                                ("ex", "Als ich klein war, …"), ("warn", "Aber Vorsicht: nur einmal.")])
+        self.assertEqual(embed_audio.explanation_speech(text),
+                         "Nach als steht das Verb am Ende. Hör zu: Als ich klein war, … Aber Vorsicht: nur einmal.")
+        self.assertIn("«als»", embed_audio.explanation_speech(text, marked=True))   # the English backup keeps its marks
+        self.assertEqual(embed_audio.explanation_sentences(text)[0][1], ["Nach «als» steht das Verb am Ende.", "Hör zu:"])
+
+    def test_sentences_find_their_words_in_the_voice(self):
+        spoken = [(0.0, "Viele"), (0.4, "Verben"), (0.9, "bekommen"), (1.3, "ung"), (2.2, "Nimm"), (2.5, "den"), (2.7, "Stamm")]
+        times = embed_audio.sentence_times(["Viele Verben bekommen -ung.", "Nimm den Stamm."], spoken)
+        self.assertEqual(times, [0.0, 2.2])
+        self.assertEqual(embed_audio.sentence_times(["Ein Satz."], []), [])
+
 
 if __name__ == "__main__":
     unittest.main()

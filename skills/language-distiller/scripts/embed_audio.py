@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import difflib
 import html
 import json
 from pathlib import Path
@@ -57,6 +58,67 @@ def voices_of(voices):
     return dict(voices)
 
 
+# ---------------------------------------------------------------- written explanations ---
+# A narration is written in short blocks, one per line: a plain line is a paragraph, "> " an example and "! " a
+# careful-now note. «…» marks the language's own words (in the English backup it also tells the voice to switch).
+# The voice reads the lines as one text; the course app shows the blocks and lights up the sentence being read.
+def explanation_blocks(text):
+    """[(kind, body)]: kind "p" (paragraph), "ex" (example) or "warn" (careful)."""
+    found = []
+    for line in str(text).splitlines():
+        line = line.strip()
+        kind = {">": "ex", "!": "warn"}.get(line[:1]) if line[1:2] == " " else None
+        if line:
+            found.append((kind or "p", line[2:].strip() if kind else line))
+    return found
+
+
+def explanation_speech(text, marked=False):
+    """What the voice reads: the blocks as one text, with «…» kept only where they choose the voice (marked)."""
+    spoken = " ".join(body for _, body in explanation_blocks(text))
+    return spoken if marked else spoken.replace("«", "").replace("»", "")
+
+
+def explanation_sentences(text, prof=None):
+    """[(kind, [sentences])] per block, split as story sentences are, but never inside «…» (a run of German forms
+    with full stops in it stays one sentence)."""
+    found = []
+    for kind, body in explanation_blocks(text):
+        sentences = []
+        for sentence in story_sentences(body, prof or language.profile("de")) or [body]:
+            if sentences and sentences[-1].count("«") > sentences[-1].count("»"):
+                sentences[-1] += " " + sentence
+            else:
+                sentences.append(sentence)
+        found.append((kind, sentences))
+    return found
+
+
+def sentence_times(sentences, words):
+    """When each sentence starts (s), from the voice's word timings [(seconds, word)]. The written letters are
+    aligned with the spoken ones, so a symbol read out, or a word the voice says differently, changes nothing."""
+    letters = lambda text: [c for c in text.casefold() if c.isalnum()]   # noqa: E731
+    shown, starts = [], []
+    for sentence in sentences:
+        starts.append(len(shown))
+        shown += letters(sentence)
+    said, owner = [], []
+    for index, (_, word) in enumerate(words):
+        chars = letters(word)
+        said += chars
+        owner += [index] * len(chars)
+    if not said:
+        return []
+    found = {}
+    for a, b, size in difflib.SequenceMatcher(None, shown, said, autojunk=False).get_matching_blocks():
+        found.update((a + k, owner[b + k]) for k in range(size))
+    times = []
+    for start, end in zip(starts, starts[1:] + [len(shown)]):
+        hit = next((found[k] for k in range(start, end) if k in found), None)
+        times.append(max(words[hit][0] if hit is not None else 0.0, times[-1] if times else 0.0))
+    return times
+
+
 def build_plan(lesson, voices=None, narration=None):
     """Clips, listening order, per-card controls and the spoken grammar explanations of one lesson.
 
@@ -66,8 +128,10 @@ def build_plan(lesson, voices=None, narration=None):
     Grammar is explained by one narrator (`voices["narrator"]`, a voice that speaks both languages, at
     `voices["narrator_rate"]`, a little slower), so the explanation sounds like one teacher. `narration` maps grammar
     ids to authored explanations: {"de": the explanation in the target language, "en": an English backup with
-    target-language words marked «…»}, or a string (English only). The target-language one is played and listened
-    to; the English one waits behind an EN button. Without narration, meaning, rule, patterns and contrast are read.
+    target-language words marked «…»}, or a string (English only), written in blocks (explanation_blocks); a
+    "title" and "patterns" in the target language are for the written card only. The target-language one is played
+    and listened to; the English one waits behind an EN button. Both are timed, so the card can follow the voice.
+    Without narration, meaning, rule, patterns and contrast are read.
     Returns (clips, sequence, controls, explain, explain_en).
     """
     voices, narration, names = voices_of(voices), narration or {}, sections_of(lesson)
@@ -75,8 +139,8 @@ def build_plan(lesson, voices=None, narration=None):
     teacher = {lang: voices.get("narrator") or voices[lang] for lang in ("de", "en")}
     pace = voices.get("narrator_rate", "")
 
-    def add(value, kind, control=None, who=None, rate="", listed=True):
-        clip = speech.make_clip(value, kind, who or voices, rate)
+    def add(value, kind, control=None, who=None, rate="", listed=True, timed=False):
+        clip = speech.make_clip(value, kind, who or voices, rate, timed)
         clips.setdefault(clip.clip_id, clip)
         if listed:                                    # part of the lesson's listening order
             sequence.append(clip.clip_id)
@@ -108,11 +172,11 @@ def build_plan(lesson, voices=None, narration=None):
         told = {"en": told} if isinstance(told, str) else told
         title = add(record["title"], "en", f"{gid}-head", teacher, pace, listed=not told)   # a narration names its topic
         if told.get("de"):
-            explain[gid] = [add(told["de"], "de", None, teacher, pace)]
+            explain[gid] = [add(explanation_speech(told["de"]), "de", None, teacher, pace, timed=True)]
             if told.get("en"):
-                explain_en[gid] = [add(told["en"], "marked", None, teacher, pace, listed=False)]
+                explain_en[gid] = [add(explanation_speech(told["en"], True), "marked", None, teacher, pace, False, True)]
         elif told.get("en"):
-            explain[gid] = [add(told["en"], "marked", None, teacher, pace)]
+            explain[gid] = [add(explanation_speech(told["en"], True), "marked", None, teacher, pace, timed=True)]
         else:
             explain[gid] = [title] + [add(text, "en", None, teacher, pace) for text in
                                       [record["meaning"], "How it works: " + record["rule"]]
@@ -378,6 +442,22 @@ LISTEN_JS = r"""
   function wake(on){ try{ if(on&&!lock&&navigator.wakeLock) navigator.wakeLock.request('screen').then(function(l){ if(R) lock=l; else l.release(); },function(){});
     else if(!on&&lock){ lock.release(); lock=null; } }catch(e){} }
   function spot(it){ return typeof it[2]==='string'?d.getElementById(it[2]):it[2]; }
+  /* reading along: in a written explanation (.say[data-clip]), the sentence being spoken lights up; .sn[data-at] says
+     when it starts, in seconds into the clip (the mark's cut: what voiceOnly took off its start). The page scrolls with
+     it only while the learner is following, that is while the sentence before was in view. */
+  var SAY=null;
+  function inView(el){ var b=el.getBoundingClientRect(); return b.bottom>60&&b.top<innerHeight-90; }
+  function sayOff(){ if(SAY&&SAY.k>=0) SAY.s[SAY.k].classList.remove('lit'); SAY=null; }
+  function readAlong(r,m,t){ var it=r.items[m.i], box=it&&m.cut!==undefined&&((r.o.btn&&r.o.btn.closest('article'))||spot(it)),
+      el=box&&box.querySelector('.say[data-clip="'+it[0]+'"]');
+    if(!el){ sayOff(); return; }
+    if(!SAY||SAY.el!==el){ sayOff(); SAY={el:el,s:el.querySelectorAll('.sn[data-at]'),k:-1}; var fold=el.closest('details'); if(fold) fold.open=true; }
+    var at=(t*RATE-m.at+m.cut)/RATE+0.1, k=-1;
+    while(k+1<SAY.s.length&&+SAY.s[k+1].getAttribute('data-at')<=at) k++;
+    if(k===SAY.k) return;
+    var was=SAY.k>=0?SAY.s[SAY.k]:null, keep=was&&!d.hidden&&inView(was);
+    if(was) was.classList.remove('lit'); SAY.k=k; if(k<0) return;
+    SAY.s[k].classList.add('lit'); if(keep&&!inView(SAY.s[k])) SAY.s[k].scrollIntoView({block:'center',behavior:'smooth'}); }
   /* ---- a run's track: its clips, decoded once, joined with their pauses into one WAV that the phone plays like music ---- */
   function pageReady(){ return d.readyState!=='loading'?Promise.resolve():new Promise(function(ok){ d.addEventListener('DOMContentLoaded',function(){ ok(); },{once:true}); }); }
   function pcm(id){ if(PCM[id]!==undefined) return Promise.resolve(PCM[id]);
@@ -386,7 +466,7 @@ LISTEN_JS = r"""
     if(!decoder){ var C=window.OfflineAudioContext||window.webkitOfflineAudioContext; decoder=new C(1,1,RATE); }
     return new Promise(function(ok){ decoder.decodeAudioData(raw.buffer,function(a){ var f=a.getChannelData(0), s=new Int16Array(f.length);
         for(var i=0;i<f.length;i++){ var v=f[i]; s[i]=v<=-1?-32768:v>=1?32767:v*32767; }
-        s=voiceOnly(s); cached+=s.length; ok(PCM[id]={b:new Blob([s]),n:s.length}); },function(){ ok(PCM[id]=null); }); }); }
+        var v=voiceOnly(s); cached+=v.length; ok(PCM[id]={b:new Blob([v]),n:v.length,cut:v.byteOffset/2}); },function(){ ok(PCM[id]=null); }); }); }
   /* a clip without the voice's own lead-in and tail (about a second at each join), so the pauses are what gapAgain and gapNext say */
   function voiceOnly(s){ var a=0, z=s.length-1; while(a<z&&Math.abs(s[a])<330) a++; while(z>a&&Math.abs(s[z])<330) z--;
     return z<=a?s:s.subarray(Math.max(0,a-Math.round(RATE*0.04)),Math.min(s.length,z+Math.round(RATE*0.1))); }
@@ -400,7 +480,7 @@ LISTEN_JS = r"""
       var parts=[], marks=[], at=0, lap, k, q;
       function add(p){ parts.push(p.b); at+=p.n; }
       for(lap=0;lap<rounds;lap++){
-        for(k=0;k<n;k++){ var it=items[k], c=PCM[it[0]], reps=it[3]?each:1, m={i:k,at:at,end:at}; marks.push(m); if(!c) continue;
+        for(k=0;k<n;k++){ var it=items[k], c=PCM[it[0]], reps=it[3]?each:1, m={i:k,at:at,end:at}; marks.push(m); if(!c) continue; m.cut=c.cut;
           var dur=c.n/RATE, last=laps&&lap===rounds-1&&k===n-1;                 /* a finite run ends right after its last sound */
           for(q=0;q<reps;q++){ add(c); m.end=at; if(q<reps-1) add(quiet(gapAgain(dur))); }
           if(!last) add(quiet(n>1?gapNext(dur,it[1]):gapAgain(dur))); }
@@ -429,7 +509,7 @@ LISTEN_JS = r"""
       if(R===r){ if(r.o.follow) follow(spot(r.items[r.cur])); attach(r,true); showBar(); } if(old) URL.revokeObjectURL(old.url); }); }
   function remember(r,t){ var m=r.t.marks[markAt(r,t)], i=m.i+(t*RATE>=m.end&&m.end>m.at?1:0);
     if(i>0&&i<r.items.length) AT[r.o.unit]={m:r.o.mode,i:i,n:r.items.length,c:r.items[0][0]}; }
-  function drop(r){ var live=R===r&&r.ready&&player.src===r.t.url, t=live?player.currentTime:(r.pos||0);
+  function drop(r){ var live=R===r&&r.ready&&player.src===r.t.url, t=live?player.currentTime:(r.pos||0); if(R===r) sayOff();
     if(R===r){ player.pause(); player.removeAttribute('src'); try{ player.load(); }catch(e){} }
     mark(r.o.btn,false); if(r.o.btn&&r.o.btn.getAttribute('data-l')){ r.o.btn.textContent=r.o.btn.getAttribute('data-l'); r.o.btn.removeAttribute('data-l'); }
     if(r.o.mode){ if(r.done) delete AT[r.o.unit]; else if(r.ready) remember(r,t); save('listen-at',AT); }
@@ -477,6 +557,7 @@ LISTEN_JS = r"""
     .forEach(function(h){ try{ navigator.mediaSession.setActionHandler(h[0],h[1]); }catch(e){} });
   player.addEventListener('timeupdate',function(){ var r=R; if(!r||!r.ready||player.src!==r.t.url) return;
     var t=player.currentTime, k=markAt(r,t), m=r.t.marks[k], lap=r.lap;
+    readAlong(r,m,t);
     if(r.o.laps) r.lap=Math.floor(k/r.items.length)+1; else if(t+1<r.last) r.lap++;            /* an endless run counts its rounds */
     r.last=t; if(m.i===r.cur){ if(lap!==r.lap) showBar(); return; }
     r.cur=m.i; if(r.o.follow) follow(spot(r.items[m.i])); showBar();

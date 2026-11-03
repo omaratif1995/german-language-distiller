@@ -138,30 +138,48 @@ UNITS = [
           "uses": [{"card": "v4", "form": "spontan"}, {"card": "v2", "form": "Verabredung"}]}]}},
 ]
 
-# Spoken grammar explanations for the audio: conversational English, every German word marked «…».
-# Spoken grammar explanations: "de" in simple German, the one the app plays; "en" an English backup behind the EN
-# button, where every German word comes after a colon or a full stop, so one voice can switch at a natural pause.
+# Spoken grammar explanations: "de" in simple German, the one the app plays and writes on the grammar card; "en" an
+# English backup behind the EN button, where every German word comes after a colon or a full stop, so one voice can
+# switch at a natural pause. Both are written in lines (a paragraph, "> " an example, "! " the trap), «…» marks the
+# German words talked about, and "title" and "patterns" put the rest of the card in German.
 NARRATION = {
     "E1": {"g1": {
+        "title": "Trennbare Verben – die Vorsilbe geht ans Ende",
         "de": "Viele Verben haben eine kleine Vorsilbe, die sich im normalen Satz vom Verb trennt. Das Verb steht auf "
-              "Position zwei, und die Vorsilbe springt ganz ans Ende: Die Besprechung fängt um neun Uhr an. Im Perfekt "
-              "ist es wieder ein Wort: hat angefangen. Und mit einem Modalverb bleibt alles zusammen am Ende: Ich muss "
-              "heute früh anfangen. Aber Vorsicht: Manche Vorsilben trennen sich nie, zum Beispiel bei verstehen und "
-              "bekommen. Ich verstehe die Aufgabe.",
+              "Position zwei, und die Vorsilbe springt ganz ans Ende:\n"
+              "> Die Besprechung fängt um neun Uhr an.\n"
+              "Im Perfekt ist es wieder ein Wort: «hat angefangen». Und mit einem Modalverb bleibt alles zusammen am Ende:\n"
+              "> Ich muss heute früh anfangen.\n"
+              "! Aber Vorsicht: Manche Vorsilben trennen sich nie, zum Beispiel bei «verstehen» und «bekommen».\n"
+              "> Ich verstehe die Aufgabe.",
+        "patterns": [{"label": "Präsens", "form": "an|fangen → Die Besprechung fängt um neun an."},
+                     {"label": "Perfekt", "form": "an|fangen → hat angefangen"},
+                     {"label": "mit Modalverb", "form": "Ich muss heute früh anfangen."}],
         "en": "Many German verbs have a little prefix that breaks away in a normal sentence. The verb stays in position "
-              "two, and the prefix jumps to the very end. Listen: «Die Besprechung fängt um neun Uhr an.» In the past "
-              "tense, it becomes one word again: «hat angefangen.» And with a modal verb, everything stays together at "
-              "the end: «Ich muss heute früh anfangen.» Careful: some prefixes never separate, like these: «verstehen, "
-              "bekommen.» Listen: «Ich verstehe die Aufgabe.»"}},
+              "two, and the prefix jumps to the very end. Listen:\n"
+              "> «Die Besprechung fängt um neun Uhr an.»\n"
+              "In the past tense, it becomes one word again: «hat angefangen.» And with a modal verb, everything stays "
+              "together at the end:\n"
+              "> «Ich muss heute früh anfangen.»\n"
+              "! Careful: some prefixes never separate, like these: «verstehen, bekommen.» Listen:\n"
+              "> «Ich verstehe die Aufgabe.»"}},
     "E2": {"g1": {
-        "de": "Ein Vorschlag klingt offen und freundlich mit könnten oder wäre. Hör zu: Wir könnten am Sonntag wandern "
-              "gehen. Das klingt viel weicher als wir müssen. Du kannst auch fragen: Wie wäre es mit einem Picknick im "
-              "Park? Und für eine Einladung: Hättest du Lust, mit ins Kino zu kommen? Vergleiche: Wir können heißt nur, "
-              "dass etwas möglich ist. Wir könnten ist ein echter Vorschlag.",
-        "en": "To make a suggestion sound open and friendly, use one of these: «könnten, wäre.» Listen: «Wir könnten am "
-              "Sonntag wandern gehen.» That sounds much softer than: «wir müssen.» You can also ask: «Wie wäre es mit "
-              "einem Picknick im Park?» And to invite someone: «Hättest du Lust, mit ins Kino zu kommen?» Compare. This "
-              "only says that something is possible: «wir können.» And this is a real suggestion: «wir könnten.»"}},
+        "title": "Höfliche Vorschläge mit könnte und wäre",
+        "de": "Ein Vorschlag klingt offen und freundlich mit «könnten» oder «wäre». Hör zu:\n"
+              "> Wir könnten am Sonntag wandern gehen.\n"
+              "Das klingt viel weicher als «wir müssen». Du kannst auch fragen:\n"
+              "> Wie wäre es mit einem Picknick im Park?\n"
+              "Und für eine Einladung:\n"
+              "> Hättest du Lust, mit ins Kino zu kommen?\n"
+              "! Vergleiche: «Wir können» heißt nur, dass etwas möglich ist. «Wir könnten» ist ein echter Vorschlag.",
+        "en": "To make a suggestion sound open and friendly, use one of these: «könnten, wäre.» Listen:\n"
+              "> «Wir könnten am Sonntag wandern gehen.»\n"
+              "That sounds much softer than: «wir müssen.» You can also ask:\n"
+              "> «Wie wäre es mit einem Picknick im Park?»\n"
+              "And to invite someone:\n"
+              "> «Hättest du Lust, mit ins Kino zu kommen?»\n"
+              "! Compare. This only says that something is possible: «wir können.» And this is a real suggestion: "
+              "«wir könnten.»"}},
 }
 
 SOURCE_TEXT = """# Sample lessons (original content written for this repository)
