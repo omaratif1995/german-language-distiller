@@ -22,7 +22,7 @@ Write one `course.json` (usually in `_work/`). Paths are relative to the file.
 }
 ```
 
-List units in course order. Use the newest reviewed sheet of each unit; drafts are refused. `new_per_day` sets the trainer's default for new cards per day (20 suits most learners; 25 suits a near exam date). `voices` and `narration` are optional; the voices shown are the defaults. Other keys are refused, so a misspelt key (`episodes_out` for `episodes_dir`) cannot silently fall back to a default folder.
+List units in course order. For two books in one course, give every unit a `group`, the book's short name (`"group": "B1.1"`), and keep each book's units together: the lesson picker then lists the books as headings, and Üben gets one chip per book. Use the newest reviewed sheet of each unit; drafts are refused. `new_per_day` sets the trainer's default for new cards per day (20 suits most learners; 25 suits a near exam date). `voices` and `narration` are optional; the voices shown are the defaults. Other keys are refused, so a misspelt key (`episodes_out` for `episodes_dir`) cannot silently fall back to a default folder.
 
 **Name the course yourself, never after the source.** The title, subtitle, unit labels and lesson titles are spoken in the episodes and shown in the app. `private_terms` lists names that must never appear in the app or the episode names: the course book's distinctive title words, its publisher, the teacher. The tools refuse to write output that contains one.
 
@@ -107,7 +107,7 @@ Requirements: `pip install edge-tts pyspellchecker imageio-ffmpeg` (or a system 
 `build_course_app.py --course course.json --output <Name>_Studienpaket_vN.html` (or `--no-audio`).
 
 **Lernen**
-- All reviewed sheets in course order, a unit picker with ‹ ›, and a search over all cards.
+- All reviewed sheets in course order, a unit picker with ‹ › (by book, when units have a `group`), and a search over all cards that shows each hit under its unit and subheading, without the empty ones.
 - 🔊 on every German headword, example, phrase and variant. **A tap repeats**: by default the clip plays again and again, with a short pause, until the learner taps it again or presses ⏹. The listening panel switches this to 1× or 3×.
 - `🔊 Erklärung` on each grammar point plays its spoken explanation once. With narration, the card shows it written out, and the sentence being spoken lights up (also during *Ganze Lektion*); **EN** plays the English one and opens it under «Auf Englisch».
 - The **Geschichte** at the end of each unit: a **🔊 Ganze Geschichte** button on the story header to play the whole story straight through, a 🔊 per paragraph, and a tap on any sentence repeats that sentence. A tap on an underlined word shows its meaning and speaks it.
@@ -130,8 +130,9 @@ Requirements: `pip install edge-tts pyspellchecker imageio-ffmpeg` (or a system 
   - **Tapping the card** (or Space) only peeks at the answer.
 - A double tap never grades the next card.
 - Rounds of 10 cards with a short break screen. A daily summary offers "+10 neue Karten". The progress bar and streak survive reloads.
-- Schedule: new cards in course order up to the daily limit, interleaved with due reviews. "Gewusst" moves a card through the intervals 1 → 3 → 7 → 14 → 30 → 60 days. "Nochmal" brings it back after three cards and restarts its interval.
-- Settings live in a closed panel: units, parts, direction, new cards per day, round size, browse mode, sound and a progress backup file.
+- Schedule: new cards from the chosen units, in course order up to the daily limit, interleaved with the due reviews of every unit, so choosing units (a new book, one lesson before a test) never pauses what the learner already practises. "Gewusst" moves a card through the intervals 1 → 3 → 7 → 14 → 30 → 60 days. "Nochmal" brings it back after three cards and restarts its interval.
+- Settings live in a closed panel: units (one chip per book first, when units have a `group`), parts, direction, new cards per day, round size, browse mode, sound and the progress, counted over every unit, one line per book.
+- **Sichern** saves the progress (cards, streak, game records) to a file. **Laden** adds a file's progress to the progress here: per card the state further on wins, per game the better result, and two streaks that touch become one (12 days up to yesterday in one app and today in the other: 13). So the backups of two book apps both go into one course app, nothing here is lost, and loading a file twice changes nothing. Cards the app does not have are left out.
 
 **Spielen**: for days without motivation. Five short games per unit, made automatically from the unit's reviewed cards, so they never show anything the sheet does not teach and never show wrong German. Every round has exactly one right answer, and the build checks that:
 
@@ -147,9 +148,12 @@ A tap is ignored for 0.3 s after a new question appears, so a tap meant for the 
 
 ## Size and performance
 
-German clips are embedded at 32 kbit/s and the English explanations at 24 kbit/s. They sit in per-unit text blocks after the app script, so the app becomes usable before the audio has finished loading, and a unit's sounds are unpacked on first use. A 16-unit course is about 40–45 MB.
+German clips are embedded at 32 kbit/s and the explanations at 24 kbit/s. A 16-unit course with spoken explanations is about 65 MB, two books in one course about 130 MB.
 
-Measured with headless Chrome at 4× CPU slowdown on a 41 MB, 16-unit course: usable after about 3 s, fully loaded after 5–7 s. On a desktop it is about 1 s. For quick sharing or old phones, also build a `--no-audio` copy (about 2 MB) and hand over the MP3 episodes.
+- **The first screen:** a small script in the page head hides every unit but the one the learner was on before the page reads them, and the bar shows the remembered tab and unit from the first paint. Without it the phone laid out the whole course while the page loaded, which took longer than reading it.
+- **The sound:** the clips sit in per-unit text blocks after the app script, so the app works before the audio has finished loading. A unit's sounds work as soon as the page has read its block, and are unpacked on first use. A 🔊 tap before then shows *wird vorbereitet …* and plays when they arrive; a card's word asked for in that time plays then too.
+
+Measured with headless Chrome at 6× CPU slowdown, about a mid-range phone, on the 129 MB, 32-unit course: the app works after 1.9–2.4 s (4.4–4.7 s without the head script) and has loaded everything after 6–9 s; on a desktop it is about 1 s. For quick sharing or old phones, also build a `--no-audio` copy (2–3 MB) and hand over the MP3 episodes.
 
 ## Delivery notes
 
@@ -157,7 +161,7 @@ Measured with headless Chrome at 4× CPU slowdown on a 41 MB, 16-unit course: us
 - **Android:** opens the file in Chrome with everything working.
 - **iPhone:** the Files and messenger preview shows the text but runs no JavaScript, so audio, practice and games need a hosted link.
 - **Screen off:** each listening session is joined into one continuous audio track with lock-screen and headphone controls (⏯ ⏮ ⏭), so playback continues with the screen off. The MP3 episodes also work in any music player.
-- **Progress:** stays in one browser on one device. The backup button moves it between devices.
+- **Progress:** stays in one browser on one device. *Sichern* and *Laden* move it between devices, and from the apps of single books into one course app with both.
 
 ## Verify before delivery
 
@@ -167,7 +171,7 @@ Measured with headless Chrome at 4× CPU slowdown on a 41 MB, 16-unit course: us
    - ✓ moves on and offers undo, ✗ opens the answer, and a tap only peeks;
    - swipes grade in both directions;
    - the round break and the daily summary appear;
-   - progress survives a reload.
+   - progress survives a reload, and *Laden* of a *Sichern* file adds to it (a second *Laden* of the same file changes nothing).
 4. Check the listening: a 🔊 tap repeats until tapped again; the panel starts all three modes; the bottom bar stops them. Listen to one mixed clip: the German words in it must sound German. Test with the sound muted when other people are around.
 5. Play one round of each game to its end screen, with one mistake, and play its *Fehler üben* round; or run `scripts/check_games.js`.
 6. Fully decode one MP3 episode with ffmpeg, so that `-v error` prints nothing.

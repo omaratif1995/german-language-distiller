@@ -84,7 +84,7 @@ The skill's [references](skills/language-distiller/references/) document the dat
 - **Your own material only.** Use the skill with material you own or are allowed to use, such as your books or your teacher's handouts. Don't publish a book's or a teacher's content.
 - **Notes in your own words.** The sheets never name their source (no book title, publisher, ISBN or characters), and their titles, examples and stories are newly written. The source is recorded only in the internal `_work` files. The skill never publishes anything for you; if you want to share your notes, check the rules that apply to you first, and remember that the audio comes from a third-party voice service with its own terms.
 - **Everything stays local**, except audio. Speech is generated with Microsoft's neural voices through `edge-tts`, which sends the selected sentences to that service. The skill asks before it does that, and you can always build without audio (`--no-audio`).
-- **Progress stays on your device.** The app has no account and no tracking. Your progress lives in your phone's browser, and the backup button moves it between devices.
+- **Progress stays on your device.** The app has no account and no tracking. Your progress lives in your phone's browser. Back it up with *Sichern* and load it with *Laden* to move it between devices, or to bring the progress of two single-book apps into one app with both books: loading adds to what is there and never overwrites it.
 
 ## Good to know
 

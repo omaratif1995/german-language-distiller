@@ -417,8 +417,9 @@ LISTEN_HTML = """<div class="lp" id="lp" hidden data-unit="">
 """
 
 # The listening engine shared by the course app and single audio sheets. The host defines d (document),
-# load/save (settings), need(id) (base64 audio, or '' while the page is still loading it), and the
-# objects SEQ, EXS and STO: per unit, the steps of "Ganze Lektion", "Nur Beispiele" and "Geschichte".
+# load/save (settings), need(id) (base64 audio, or '' while the page is still loading it), whenAudio(ids) (a promise
+# kept once those clips can be read), and the objects SEQ, EXS and STO: per unit, the steps of "Ganze Lektion",
+# "Nur Beispiele" and "Geschichte".
 # It runs in the host's scope, so its names must not repeat the host's (the app already has again(), end(), bar).
 LISTEN_JS = r"""
   /* ---------------- listening: every run plays as one audio track, so it goes on with the screen off ---------------- */
@@ -459,7 +460,6 @@ LISTEN_JS = r"""
     if(was) was.classList.remove('lit'); SAY.k=k; if(k<0) return;
     SAY.s[k].classList.add('lit'); if(keep&&!inView(SAY.s[k])) SAY.s[k].scrollIntoView({block:'center',behavior:'smooth'}); }
   /* ---- a run's track: its clips, decoded once, joined with their pauses into one WAV that the phone plays like music ---- */
-  function pageReady(){ return d.readyState!=='loading'?Promise.resolve():new Promise(function(ok){ d.addEventListener('DOMContentLoaded',function(){ ok(); },{once:true}); }); }
   function pcm(id){ if(PCM[id]!==undefined) return Promise.resolve(PCM[id]);
     var data=need(id); if(!data) return Promise.resolve(PCM[id]=null);
     var bin=atob(data), raw=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) raw[i]=bin.charCodeAt(i);
@@ -476,7 +476,7 @@ LISTEN_JS = r"""
   /* marks[k] = {i: step, at: its first sample, end: the sample after its last play}; an endless run is one round that loops */
   function track(r){ var items=r.items, n=items.length, each=r.o.each||1, laps=r.o.laps||0, rounds=laps||1, ids={};
     items.forEach(function(it){ ids[it[0]]=1; });
-    return pageReady().then(function(){ return decodeAll(Object.keys(ids),4,pcm); }).then(function(){
+    return whenAudio(Object.keys(ids)).then(function(){ return decodeAll(Object.keys(ids),4,pcm); }).then(function(){   /* only this run's clips */
       var parts=[], marks=[], at=0, lap, k, q;
       function add(p){ parts.push(p.b); at+=p.n; }
       for(lap=0;lap<rounds;lap++){
@@ -498,7 +498,13 @@ LISTEN_JS = r"""
   function unlock(){ if(unlocked) return; unlocked=true; player.src=SILENT; var p=player.play();      /* a phone lets a page play later only after a tap */
     if(p) p.then(function(){ if(player.src===SILENT) player.pause(); },function(){}); }
   function go(){ var p=player.play(); if(p) p.catch(function(e){ var r=R; if(e&&e.name==='NotAllowedError'&&r){ r.paused=true; mark(r.o.btn,false); showBar(); } }); }
-  function clip(id){ var data=need(id); if(!data) return false; player.loop=false; player.src='data:audio/mpeg;base64,'+data; go(); return true; }
+  /* one clip now (a card's word, a game's sentence); while the page is still loading its sound, it plays once that is
+     there, unless something else was asked for in the meantime */
+  var asked=0;
+  function sound(data){ player.loop=false; player.src='data:audio/mpeg;base64,'+data; go(); }
+  function clip(id){ var data=need(id), mine=++asked; if(data){ sound(data); return true; }
+    if(!id||d.readyState!=='loading') return false;
+    whenAudio([id]).then(function(){ var later=need(id); if(mine===asked&&!R&&later) sound(later); }); return true; }
   function attach(r,play){ player.loop=!r.o.laps; player.src=r.t.url; r.last=r.pos;
     player.onloadedmetadata=function(){ player.onloadedmetadata=null; if(R!==r) return; player.currentTime=r.pos; if(play&&!r.paused) go(); }; }
   function prepare(r,from){ r.ready=false; r.from=from; showBar();
@@ -514,10 +520,10 @@ LISTEN_JS = r"""
     mark(r.o.btn,false); if(r.o.btn&&r.o.btn.getAttribute('data-l')){ r.o.btn.textContent=r.o.btn.getAttribute('data-l'); r.o.btn.removeAttribute('data-l'); }
     if(r.o.mode){ if(r.done) delete AT[r.o.unit]; else if(r.ready) remember(r,t); save('listen-at',AT); }
     if(r.t) URL.revokeObjectURL(r.t.url); r.t=null; r.ready=false; }
-  function stopAll(){ if(R) drop(R); if(held) drop(held); R=held=null; follow(null); wake(false); if(nowBar) nowBar.hidden=true; }
+  function stopAll(){ asked++; if(R) drop(R); if(held) drop(held); R=held=null; follow(null); wake(false); if(nowBar) nowBar.hidden=true; }
   /* items: [clip id, pause factor, element (or its id) to highlight, repeatable]; o: {btn, each, laps (0 = endless), follow, stop, label},
      and for a session from the panel also unit, mode and at (its first step) */
-  function run(items,o){ if(!items||!items.length) return;
+  function run(items,o){ if(!items||!items.length) return; asked++;
     if(!o.mode&&(held||R&&R.o.mode)){                      /* a 🔊 tap during a session holds the session: it waits in the bar, paused */
       if(R&&R.o.mode){ held=R; if(held.ready&&player.src===held.t.url) held.pos=player.currentTime; held.paused=true; player.pause(); mark(held.o.btn,false); }
       else if(R) drop(R); }
@@ -621,6 +627,7 @@ AUDIO_JS = r"""
   function load(k,dflt){ try{ var v=localStorage.getItem('study-sheet:'+k); return v?JSON.parse(v):dflt; }catch(e){ return dflt; } }
   function save(k,v){ try{ localStorage.setItem('study-sheet:'+k,JSON.stringify(v)); }catch(e){} }
   function need(id){ return P[id]||''; }
+  function whenAudio(){ return Promise.resolve(); }                  /* a sheet carries its clips in this script */
 __LISTEN__
 })();
 </script>

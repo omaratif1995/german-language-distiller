@@ -284,7 +284,7 @@ APP_CSS = r"""
   .js .unit.on{display:block}
   .searching .unit{display:block}
   .searching article.miss,.searching .unit.empty{display:none !important}
-  .searching h2,.searching .rule-under{display:none}
+  .searching h2,.searching .rule-under,.searching .unit > h3.miss{display:none}
   section.unit + section.unit{margin-top:40px}
   .explain-button{border:1px solid rgba(255,255,255,.28);color:#fff;background:rgba(15,23,42,.55);font:inherit;font-size:13px;
        font-weight:700;border-radius:999px;padding:4px 10px;margin-left:8px;cursor:pointer;white-space:nowrap}
@@ -358,10 +358,14 @@ APP_CSS = r"""
   .pr .lab{font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
   .pr .chips{display:flex;flex-wrap:wrap;gap:6px}
   .pr .chips button{min-height:36px;padding:5px 10px;font-size:14px;cursor:pointer}
+  .pr #s-units .chips + .chips{margin-top:10px}
+  .pr .chips button.grp{font-weight:700;min-width:58px}
+  .pr .chips button[aria-pressed="mixed"]{border-color:var(--accent);color:var(--accent)}
   .pr .stat{font-size:13px;color:var(--muted)}
+  .pr .stat .line{display:block}
   .pr .backup{display:flex;gap:8px;flex-wrap:wrap}
   .pr .backup button,.pr .backup label{font:inherit;font-size:14px;cursor:pointer;color:var(--ink);background:var(--card);
-       border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+       border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:42px;box-sizing:border-box;display:inline-flex;align-items:center}
   .pr .backup input{display:none}
   /* ---- Spielen ---- */
   .g-menu{display:grid;gap:10px}
@@ -475,10 +479,17 @@ APP_JS = r"""
   function save(k,v){try{localStorage.setItem(K+':'+k,JSON.stringify(v));}catch(e){}}
   var ui=load('ui',{}), state=load('srs',{}), meta=load('meta',{day:0,fresh:0,extra:0,streak:0,last:-9,done:0,good:0});
   function today(){var t=new Date();return Math.floor((t.getTime()-t.getTimezoneOffset()*60000)/86400000);}
-  /* audio sits in per-unit text blocks after this script; a unit's clips are unpacked on first use */
+  /* audio sits in per-unit text blocks after this script; a unit's clips are unpacked on first use, but only once the
+     page has read the whole block (a block still being read would give half a clip), and the block's text then goes */
+  function parsed(el){ return d.readyState!=='loading'||!!el.nextElementSibling; }
   function need(id){ if(AU[id]!==undefined) return AU[id]; var k=IDX[id], el=k===undefined?null:d.getElementById('au-'+k);
-    if(el && !el.getAttribute('data-read')){ el.textContent.split(';').forEach(function(p){ var i=p.indexOf(':'); if(i>0) AU[p.slice(0,i)]=p.slice(i+1); }); el.setAttribute('data-read','1'); }
+    if(el && !el.getAttribute('data-read') && parsed(el)){ el.textContent.split(';').forEach(function(p){ var i=p.indexOf(':'); if(i>0) AU[p.slice(0,i)]=p.slice(i+1); });
+      el.setAttribute('data-read','1'); el.textContent=''; }
     return AU[id]||''; }
+  /* kept once these clips can be read: a unit's sound works as soon as its block is in, not after the whole page */
+  function whenAudio(ids){ return new Promise(function(ok){ (function check(){
+    if(ids.every(function(id){ var k=IDX[id], el; return k===undefined||AU[id]!==undefined||!!((el=d.getElementById('au-'+k))&&parsed(el)); })) ok();
+    else setTimeout(check,120); })(); }); }
 __LISTEN__
   /* ---------------- Lernen: unit picker and search ---------------- */
   var units=[].slice.call(d.querySelectorAll('section.unit')), sel=d.getElementById('pick'), q=d.getElementById('q'), hits=d.getElementById('hits');
@@ -490,12 +501,19 @@ __LISTEN__
   d.getElementById('prev').addEventListener('click',function(){stepUnit(-1);});
   d.getElementById('next').addEventListener('click',function(){stepUnit(1);});
   function norm(s){return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ß/g,'ss');}
-  var arts=[].slice.call(d.querySelectorAll('section.unit article')).map(function(a){return [a,norm(a.textContent)];}), tq;
+  var arts=null, heads=null, tq;                  /* built on the first search, not while the app opens */
+  function index(){ if(arts) return;
+    arts=[].slice.call(d.querySelectorAll('section.unit article')).map(function(a){return [a,norm(a.textContent)];});
+    heads=[].slice.call(d.querySelectorAll('section.unit > h3')).map(function(h){ var list=[], n=h.nextElementSibling;   /* a subheading and its cards */
+      for(;n&&!/^H[23]$/.test(n.tagName);n=n.nextElementSibling) list=list.concat(n.tagName==='ARTICLE'?[n]:[].slice.call(n.querySelectorAll('article')));
+      return [h,list]; }); }
   q.addEventListener('input',function(){clearTimeout(tq); tq=setTimeout(search,150);});
-  function search(){ var v=norm(q.value.trim());
-    if(v.length<2){ d.body.classList.remove('searching'); arts.forEach(function(c){c[0].classList.remove('miss');}); units.forEach(function(u){u.classList.remove('empty');}); return; }
+  function search(){ var v=norm(q.value.trim()); index();
+    if(v.length<2){ d.body.classList.remove('searching'); arts.forEach(function(c){c[0].classList.remove('miss');}); heads.forEach(function(h){h[0].classList.remove('miss');});
+      units.forEach(function(u){u.classList.remove('empty');}); return; }
     d.body.classList.add('searching'); var n=0;
     arts.forEach(function(c){var m=c[1].indexOf(v)>=0; c[0].classList.toggle('miss',!m); if(m) n++;});
+    heads.forEach(function(h){ h[0].classList.toggle('miss',!h[1].some(function(a){ return !a.classList.contains('miss'); })); });   /* no empty subheadings */
     units.forEach(function(u){u.classList.toggle('empty',!u.querySelector('article:not(.miss)'));});
     hits.textContent=n+(n===1?' Karte':' Karten')+' gefunden'; }
 
@@ -519,11 +537,12 @@ __LISTEN__
   function start(){ newDay(); dropUndo(); renderSettings();
     if(S.browse){ bList=pool(); bIdx=Math.min(bIdx,Math.max(0,bList.length-1)); cur=bList[bIdx]||null; shown=false; missed=false; view=cur?'card':'empty'; render(); return; }
     var T=today(), p=pool();
-    var due=p.filter(function(c){var s=state[c.id]; return s && s[1]<=T;}).sort(function(a,b){return state[a.id][1]-state[b.id][1]||state[a.id][0]-state[b.id][0];});
+    /* due cards come from every lesson, so choosing lessons never pauses what you already learn; new ones from the chosen */
+    var due=CARDS.filter(function(c){var s=state[c.id]; return s && s[1]<=T && S.kinds.indexOf(c.k)>=0;}).sort(function(a,b){return state[a.id][1]-state[b.id][1]||state[a.id][0]-state[b.id][0];});
     var fresh=p.filter(function(c){return !state[c.id];}).slice(0,Math.max(0,S.perDay+meta.extra-meta.fresh));
     queue=[]; var i=0,j=0; while(i<due.length||j<fresh.length){ if(i<due.length) queue.push(due[i++]); if(i<due.length) queue.push(due[i++]); if(j<fresh.length) queue.push(fresh[j++]); }
     ses={inRound:0,rg:0,ra:0};
-    if(!p.length){ cur=null; view='empty'; render(); return; }
+    if(!p.length&&!due.length){ cur=null; view='empty'; render(); return; }
     next(); }
   function next(){ stopAll(); cur=queue.shift()||null; shown=false; missed=false; view=cur?'card':'done'; readyAt=Date.now()+250;   /* a double tap must not grade the next card */
     fc.style.transition='none'; render(); void fc.offsetWidth; fc.style.transition=''; fc.classList.add('enter');
@@ -615,23 +634,53 @@ __LISTEN__
   function chips(id,items,active,toggle){ var box=d.getElementById(id); box.innerHTML='';
     items.forEach(function(it){ var b=d.createElement('button'); b.type='button'; b.textContent=it[1]; b.setAttribute('aria-pressed',active.indexOf(it[0])>=0);
       b.addEventListener('click',function(){ toggle(it[0]); }); box.appendChild(b); }); }
+  function unitChips(){ var box=d.getElementById('s-units'); box.innerHTML='';
+    (CFG.groups||[[null,ORDER]]).forEach(function(g){ var row=d.createElement('div'); row.className='chips'; box.appendChild(row);
+      if(g[0]){ var on=g[1].filter(function(u){ return S.units.indexOf(u)>=0; }).length, all=on===g[1].length, b=d.createElement('button');   /* a whole book at once */
+        b.type='button'; b.className='grp'; b.textContent=g[0]; b.setAttribute('aria-pressed',all?'true':on?'mixed':'false');
+        b.addEventListener('click',function(){ S.units=S.units.filter(function(u){ return g[1].indexOf(u)<0; }).concat(all?[]:g[1]); persist(); start(); });
+        row.appendChild(b); }
+      g[1].forEach(function(u){ var b=d.createElement('button'); b.type='button'; b.textContent=CFG.units.filter(function(x){ return x[0]===u; })[0][1];
+        b.setAttribute('aria-pressed',String(S.units.indexOf(u)>=0));
+        b.addEventListener('click',function(){ var i=S.units.indexOf(u); if(i>=0) S.units.splice(i,1); else S.units.push(u); persist(); start(); });
+        row.appendChild(b); }); }); }
   function renderSettings(){
-    chips('s-units',CFG.units,S.units,function(u){ var i=S.units.indexOf(u); if(i>=0) S.units.splice(i,1); else S.units.push(u); persist(); start(); });
+    unitChips();
     chips('s-kinds',[['w','Wortschatz'],['g','Grammatik'],['r','Redemittel']],S.kinds,function(k){ var i=S.kinds.indexOf(k); if(i>=0) S.kinds.splice(i,1); else S.kinds.push(k); persist(); start(); });
     chips('s-dir',[['de','Deutsch → Englisch'],['en','Englisch → Deutsch']],[S.dir],function(v){ S.dir=v; persist(); renderSettings(); render(); });
     chips('s-new',[[5,'5'],[10,'10'],[15,'15'],[20,'20'],[25,'25'],[40,'40']],[S.perDay],function(v){ S.perDay=v; persist(); start(); });
     chips('s-round',[[10,'10'],[20,'20'],[0,'ohne Pause']],[S.round],function(v){ S.round=v; persist(); renderSettings(); });
     chips('s-mode',[[false,'Tagesplan'],[true,'Durchblättern']],[S.browse],function(v){ S.browse=v; persist(); start(); });
     chips('s-auto',[[true,'Ton an'],[false,'Ton aus']],[S.auto],function(v){ S.auto=v; persist(); renderSettings(); });
-    var p=pool(), n={neu:0,lern:0,sicher:0,fest:0};
-    p.forEach(function(c){ var s=state[c.id]; if(!s) n.neu++; else if(s[0]<=2) n.lern++; else if(s[0]<=4) n.sicher++; else n.fest++; });
-    d.getElementById('s-stat').textContent='Neu '+n.neu+' · Lerne ich '+n.lern+' · Sicher '+n.sicher+' · Fest '+n.fest; }
+    var stat=d.getElementById('s-stat'); stat.innerHTML='';             /* every lesson, one line per book */
+    (CFG.groups||[[null,ORDER]]).forEach(function(g){ var n={neu:0,lern:0,sicher:0,fest:0}, line=d.createElement('span');
+      CARDS.forEach(function(c){ if(g[1].indexOf(c.u)<0||S.kinds.indexOf(c.k)<0) return; var s=state[c.id];
+        if(!s) n.neu++; else if(s[0]<=2) n.lern++; else if(s[0]<=4) n.sicher++; else n.fest++; });
+      line.className='line'; line.textContent=(g[0]?g[0]+': ':'')+'Neu '+n.neu+' · Lerne ich '+n.lern+' · Sicher '+n.sicher+' · Fest '+n.fest; stat.appendChild(line); }); }
   d.getElementById('all-u').addEventListener('click',function(){ S.units=S.units.length===ORDER.length?[]:ORDER.slice(); persist(); start(); });
   d.getElementById('save-btn').addEventListener('click',function(){
     var blob=new Blob([JSON.stringify({v:2,key:K,state:state,meta:meta,games:load('games',{})})],{type:'application/json'}), a=d.createElement('a');
     a.href=URL.createObjectURL(blob); a.download=K+'-fortschritt-'+new Date().toISOString().slice(0,10)+'.json'; d.body.appendChild(a); a.click(); a.remove(); });
-  d.getElementById('load-in').addEventListener('change',function(e){ var f=e.target.files[0]; if(!f) return; var r=new FileReader();
-    r.onload=function(){ try{ var o=JSON.parse(r.result); if(o && o.state){ state=o.state; meta=o.meta||meta; save('srs',state); save('meta',meta); if(o.games) save('games',o.games); start(); alert('Fortschritt geladen.'); } }catch(err){ alert('Diese Datei ist keine Sicherung.'); } };
+  /* Laden adds a backup to the progress here, so the backups of two book apps both go into one course app: per card the
+     state further on wins (the later due day, then the higher box), per game the better result, and two streaks that
+     touch become one (12 days up to yesterday there and today here: 13). Cards this app does not have are left out. */
+  function mergeIn(o){ var known={}, n=0, s=o.state, g=load('games',{}), og=o.games||{}, m=o.meta||{};
+    CARDS.forEach(function(c){ known[c.id]=1; });
+    Object.keys(s).forEach(function(id){ var a=state[id], b=s[id]; if(!known[id]||!Array.isArray(b)||b.length<2) return; n++;
+      if(!a||b[1]>a[1]||(b[1]===a[1]&&b[0]>a[0])) state[id]=[+b[0],+b[1]]; });
+    Object.keys(og).forEach(function(u){ if(!og[u]||typeof og[u]!=='object') return; g[u]=g[u]||{};
+      Object.keys(og[u]).forEach(function(k){ var x=g[u][k]||{s:0,p:0}, y=og[u][k]||{}; g[u][k]={s:Math.max(x.s||0,y.s||0),p:Math.max(x.p||0,y.p||0)}; }); });
+    if(typeof m.last==='number'&&m.streak>0){
+      if(!(meta.streak>0)){ meta.streak=m.streak; meta.last=m.last; }
+      else { var a=[meta.last-meta.streak+1,meta.last], b=[m.last-m.streak+1,m.last], late=a[1]>=b[1]?a:b, early=late===a?b:a;   /* [first day, last day] */
+        meta.streak=late[0]<=early[1]+1?late[1]-Math.min(a[0],b[0])+1:late[1]-late[0]+1; meta.last=late[1]; } }
+    save('srs',state); save('meta',meta); save('games',g); Games.refresh(); return n; }
+  d.getElementById('load-in').addEventListener('change',function(e){ var f=e.target.files[0]; e.target.value=''; if(!f) return; var r=new FileReader();
+    r.onload=function(){ var o=null; try{ o=JSON.parse(r.result); }catch(err){}
+      if(!o||!o.state||typeof o.state!=='object'){ alert('Diese Datei ist keine Sicherung.'); return; }
+      var n=mergeIn(o); start();
+      alert(n?(n===1?'1 Karte aus der Sicherung übernommen.':'{n} Karten aus der Sicherung übernommen.'.replace('{n}',n))+' '+'Dein Fortschritt hier bleibt erhalten.'
+             :'In dieser Sicherung ist kein Fortschritt für diese Lektionen.'); };
     r.readAsText(f); });
 
   /* ---------------- Spielen: five short games per unit, made from its cards ---------------- */
@@ -869,9 +918,10 @@ __LISTEN__
       function done(){ var secs=Math.round((Date.now()-t0)/1000), n=pool_.length;
         finish('paare',misses===0&&secs<=n*4?3:misses<=Math.ceil(n/5)?2:1,Math.max(10,n*20-secs*2-misses*10),['Zeit: '+secs+' s · Fehler: '+misses],missed); }
       deal(); }
-    return {open:open, stop:stop};
+    return {open:open, stop:stop, refresh:function(){ best=load('games',{}); }};   /* refresh: after Laden */
   })();
 
+  var early=d.getElementById('early-unit'); if(early) early.remove();   /* the unit shown while the page loaded */
   show(ui.unit||units[0].id,false);
   mode(ui.tab==='p'||ui.tab==='g'?ui.tab:'l');
 })();
@@ -883,7 +933,8 @@ PRACTICE = """
 <div class="fc" id="fc" aria-live="polite"></div>
 <div class="dock"><div class="acts" id="acts"></div><div class="undo" id="undo" aria-live="polite"></div></div>
 <details class="settings"><summary>Einstellungen</summary>
-<div class="group"><div class="lab">Lektionen <button type="button" id="all-u" style="min-height:28px;padding:2px 8px;font-size:12px;margin-left:6px">alle / keine</button></div><div class="chips" id="s-units"></div></div>
+<div class="group"><div class="lab">Lektionen <button type="button" id="all-u" style="min-height:28px;padding:2px 8px;font-size:12px;margin-left:6px">alle / keine</button></div><div id="s-units"></div>
+<p class="stat">Neue Karten kommen aus den gewählten Lektionen. Fällige Karten kommen aus allen, damit du nichts vergisst.</p></div>
 <div class="group"><div class="lab">Teile</div><div class="chips" id="s-kinds"></div></div>
 <div class="group"><div class="lab">Richtung (Wortschatz)</div><div class="chips" id="s-dir"></div></div>
 <div class="group"><div class="lab">Neue Karten pro Tag</div><div class="chips" id="s-new"></div></div>
@@ -914,6 +965,21 @@ FRAME = """<nav class="bar" aria-label="Navigation">
 <div class="hits lern-only search-only" id="hits"></div>
 </nav>
 <noscript><p class="cover">Audio, Üben und Spielen brauchen einen Browser mit JavaScript.</p></noscript>"""
+
+
+# Runs in <head>, before any unit is read: every unit but the one the learner was on stays hidden while the page loads,
+# so a phone never lays out the whole course (that took longer than the reading itself). The app script takes over.
+EARLY_JS = """<script>(function(){ var r=document.documentElement, u={}; r.classList.add('js');
+  try{ u=JSON.parse(localStorage.getItem('__KEY__:ui'))||{}; }catch(e){}
+  if(u.tab==='p'||u.tab==='g') return; var s=document.createElement('style'); s.id='early-unit';
+  s.textContent='section.unit[id="'+(typeof u.unit==='string'&&/^[A-Za-z0-9_-]+$/.test(u.unit)?u.unit:'__FIRST__')+'"]{display:block}';
+  document.head.appendChild(s); })();</script>"""
+# Right after the bar: it shows the tab and unit the learner was on from the first paint, not only once the app runs.
+EARLY_BAR = """<script>(function(){ var u={}, d=document; try{ u=JSON.parse(localStorage.getItem('__KEY__:ui'))||{}; }catch(e){}
+  var t=u.tab==='p'||u.tab==='g'?u.tab:'l', id=typeof u.unit==='string'&&/^[A-Za-z0-9_-]+$/.test(u.unit)?u.unit:'', p=d.getElementById('pick');
+  ['l','p','g'].forEach(function(k){ d.getElementById('tab-'+k).setAttribute('aria-pressed',String(k===t)); });
+  if(t!=='l') d.body.classList.add(t==='p'?'mode-practice':'mode-games');
+  if(id&&p.querySelector('option[value="'+id+'"]')) p.value=id; })();</script>"""
 
 
 def slug(text):
@@ -963,7 +1029,7 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
             body = body.replace("</header>", f'<div class="listen-row"><button type="button" class="listen-open" data-unit="{uid}">'
                                              f'{html.escape(ui.get("🎧 Anhören", "🎧 Anhören"))}</button></div></header>', 1)
         title = html.unescape(re.search(r"<h1>(.*?)</h1>", body).group(1))
-        options.append(f'<option value="{uid}">{html.escape(label)} · {html.escape(title.split(" – ")[0])}</option>')
+        options.append((uid, f'<option value="{uid}">{html.escape(label)} · {html.escape(title.split(" – ")[0])}</option>'))
         for kind, cid, inner in re.findall(r'<article class="(voc|rule|phrase)" id="([^"]+)">(.*?)</article>', body, re.S):
             card = {"u": uid, "l": label, "id": f"{uid}-{cid}", "k": KIND[kind], "b": inner}
             if kind == "voc":
@@ -992,9 +1058,20 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
         with ThreadPoolExecutor(max_workers=6) as pool:
             for cid, data in zip([j[0] for j in jobs], pool.map(lambda j: compressed(course["cache"], j[0], j[1], ff), jobs)):
                 payloads[cid] = data
+    groups = []                                       # books in one course: [label, unit ids], in course order
+    for unit in course["units"]:
+        if unit.get("group"):
+            if not groups or groups[-1][0] != unit["group"]:
+                groups.append([unit["group"], []])
+            groups[-1][1].append(unit["id"])
+    picker = dict(options)
+    options_html = ("".join(f'<optgroup label="{html.escape(name)}">' + "".join(picker[u] for u in ids) + "</optgroup>"
+                            for name, ids in groups) if groups else "".join(option for _, option in options))
     config = {"key": slug(course["title"]), "perDay": int(course.get("new_per_day", 20)),
               "units": [[u["id"], u["id"]] for u in course["units"]], "labels": {u["id"]: u["label"] for u in course["units"]},
               "arts": prof["articles"], "col": prof["article_colours"]}
+    if groups:
+        config["groups"] = groups
     if not language.spaced(prof):                     # Satzbau asks the browser for the words (Intl.Segmenter)
         config.update(spaces=False, small=prof["bingo"]["function_words"].split())
     rtl = study_pack.RTL_CSS + RTL_APP_CSS if prof.get("direction") == "rtl" else ""
@@ -1015,13 +1092,16 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
     names = prof["sections"]
     subtitle = html.escape(course.get("subtitle", f"{len(course['units'])} {ui.get('Lektionen', 'Lektionen')} · "
                                                   f"{names['vocabulary']} · {names['grammar']} · {names['redemittel']}"))
-    frame = language.localize(FRAME, ui).replace("__OPTIONS__", "".join(options))
+    frame = (language.localize(FRAME, ui).replace("__OPTIONS__", options_html)
+             .replace("</nav>", "</nav>\n" + EARLY_BAR.replace("__KEY__", config["key"]), 1))
+    early = EARLY_JS.replace("__KEY__", config["key"]).replace("__FIRST__", course["units"][0]["id"])
     doc = f"""<!DOCTYPE html>
 <html lang="{prof['code']}"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="study-pack-app" content="course v2">
 <title>{html.escape(course['title'])}</title>
 <style>{css}{AUDIO_CSS}{APP_CSS}{rtl}</style>
+{early}
 </head>
 <body><main class="wrap">
 {frame}
@@ -1038,9 +1118,9 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
 </body></html>
 """
     require("http://" not in doc and "https://" not in doc, "output unexpectedly contains an external URL")
+    visible = re.sub(r'<script type="text/plain".*?</script>', "", doc, flags=re.S)       # without the audio, once
     for term in course.get("private_terms", []):
-        require(not exact_term(re.sub(r'<script type="text/plain".*?</script>', "", doc, flags=re.S), term),
-                f"the app names the private source term {term!r}")
+        require(not exact_term(visible, term), f"the app names the private source term {term!r}")
     output = Path(output)
     with output.open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(doc)

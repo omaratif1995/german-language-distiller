@@ -254,7 +254,7 @@ class CourseAppTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r'class="ss" id="U1-story-s\d+" data-audio="a_', page)), 6)
         self.assertIn('data-m="ex"', page)                           # Nur Beispiele
         self.assertNotIn('type="text/plain" id="au-', page)   # placeholder: no payload blocks
-        self.assertLess(page.index("<script>"), page.rindex("</main>") + 20)
+        self.assertLess(page.index("<script>", page.rindex("</main>")), page.rindex("</main>") + 20)   # after the units
         sequences = {name: json.loads(re.search(name + r"=(\{.*?\}), ", page, re.S).group(1)) for name in ("SEQ", "EXS", "STO")}
         self.assertEqual([step[2] for step in sequences["EXS"]["U1"]], ["U1-v1-x0", "U1-g1-x0", "U1-g1-x1", "U1-e1-x0"])
         self.assertEqual(sequences["STO"]["U2"], [])
@@ -309,6 +309,51 @@ class CourseAppTests(unittest.TestCase):
         self.assertFalse(ok("Betreff: Anfrage wegen der Wohnung im zweiten Stock"))           # a heading, not a sentence
         self.assertFalse(ok("Das kenne ich gut: Ich verliere ständig meine Schlüssel."))      # two sentences in one
         self.assertFalse(ok("Am Sonntag besuchen wir mit den Kindern die Großeltern auf ihrem Bauernhof."))   # over nine words
+
+    def test_books_in_one_course_are_grouped(self):
+        data = json.loads(self.course_path.read_text(encoding="utf-8"))
+        for unit, book in zip(data["units"], ("Buch 1", "Buch 2")):
+            unit["group"] = book
+        self.course_path.write_text(json.dumps(data), encoding="utf-8")
+        out = self.root / "app_books.html"
+        build_course_app.build(course_audio.load_course(self.course_path), out, audio=False)
+        page = out.read_text(encoding="utf-8")
+        self.assertIn('<optgroup label="Buch 1"><option value="U1">', page)       # the lesson picker, book by book
+        self.assertIn('<optgroup label="Buch 2"><option value="U2">', page)
+        config = json.loads(re.search(r"CFG=(\{.*?\}), G=", page, re.S).group(1))
+        self.assertEqual(config["groups"], [["Buch 1", ["U1"]], ["Buch 2", ["U2"]]])   # one chip per book in Üben
+
+    def test_units_without_books_keep_a_plain_picker(self):
+        out = self.root / "app_plain.html"
+        build_course_app.build(course_audio.load_course(self.course_path), out, audio=False)
+        page = out.read_text(encoding="utf-8")
+        self.assertNotIn("<optgroup", page)
+        self.assertNotIn('"groups"', page)
+
+    def test_a_book_is_one_run_of_units(self):
+        data = json.loads(self.course_path.read_text(encoding="utf-8"))
+        data["units"][0]["group"] = "Buch 1"
+        self.course_path.write_text(json.dumps(data), encoding="utf-8")
+        with self.assertRaisesRegex(Exception, "every unit a group, or none"):
+            course_audio.load_course(self.course_path)
+        data["units"] = data["units"] + [dict(data["units"][0], id="U3")]
+        data["units"][1]["group"], data["units"][2]["group"] = "Buch 2", "Buch 1"
+        self.course_path.write_text(json.dumps(data), encoding="utf-8")
+        with self.assertRaisesRegex(Exception, "must follow each other"):
+            course_audio.load_course(self.course_path)
+
+    def test_other_units_are_hidden_before_the_page_reads_them(self):
+        out = self.root / "app_early.html"
+        build_course_app.build(course_audio.load_course(self.course_path), out, audio=False)
+        page = out.read_text(encoding="utf-8")
+        head = page[:page.index("</head>")]
+        self.assertIn("r.classList.add('js')", head)                  # .js .unit{display:none} holds from the first unit on
+        self.assertIn("localStorage.getItem('test-kurs:ui')", head)   # the unit the learner was on shows at once
+        self.assertIn('?u.unit:\'U1\'', head)
+        self.assertLess(page.index("</head>"), page.index('<section class="unit"'))
+        bar = page[page.index("</nav>"):page.index('<section class="unit"')]       # the bar shows the tab and unit at once
+        self.assertIn("localStorage.getItem('test-kurs:ui')", bar)
+        self.assertIn("d.body.classList.add(t==='p'?'mode-practice':'mode-games')", bar)
 
     def test_unknown_course_key_is_refused(self):
         data = json.loads(self.course_path.read_text(encoding="utf-8"))

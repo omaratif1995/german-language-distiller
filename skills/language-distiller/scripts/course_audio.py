@@ -53,11 +53,17 @@ def load_course(path):
             require(unit.get(key), f"unit is missing {key}: {unit}")
         require(re.fullmatch(r"[A-Za-z0-9_-]+", unit["id"]) is not None, f"unit id must be a simple token: {unit['id']}")
         require(unit["id"] not in seen, f"duplicate unit id {unit['id']}")
+        require("group" not in unit or (isinstance(unit["group"], str) and unit["group"].strip()),
+                f"unit {unit['id']}: group must be a short text, such as the book's name")
         seen.add(unit["id"])
         unit["lesson"] = (base / unit["lesson"]).resolve()
         unit["sheet"] = (base / unit["sheet"]).resolve()
         require(unit["lesson"].is_file(), f"lesson file not found: {unit['lesson']}")
         require(unit["sheet"].is_file(), f"sheet file not found: {unit['sheet']}")
+    groups = [unit.get("group") for unit in course["units"]]          # books in one course, each a run of units
+    require(all(groups) or not any(groups), "give every unit a group, or none")
+    starts = [group for index, group in enumerate(groups) if group and (index == 0 or groups[index - 1] != group)]
+    require(len(starts) == len(set(starts)), "the units of a group must follow each other")
     codes = {language.code_of(json.loads(unit["lesson"].read_text(encoding="utf-8-sig")).get("target_language", "de"))
              for unit in course["units"]}
     require(len(codes) == 1, f"all units of a course need one target language, not {', '.join(sorted(codes))}")
