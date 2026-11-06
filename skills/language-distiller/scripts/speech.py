@@ -30,6 +30,7 @@ import subprocess
 import language
 
 DEFAULT_VOICES = {"de": "de-DE-KatjaNeural", "en": "en-US-AvaNeural"}   # target language ("de" slot), gloss language
+TRIES, RETRY_SECONDS = 4, 1.0            # a failed voice request is sent again after 1, 2 and 3 seconds
 
 
 class SpeechError(ValueError):
@@ -396,6 +397,14 @@ def _communicate(edge_tts, text, voice, rate, marks):
     return edge_tts.Communicate(text=text, voice=voice, rate=rate)
 
 
+def _time_limit(spoken):
+    """Seconds one voice request may take: a minute, and a second for every five characters, more than twice as long
+    as saying them takes (speech runs at 10-12 characters a second; the service sends audio faster). edge-tts sets a
+    read limit, but aiohttp drops it once the websocket is open, so without this a connection lost while the computer
+    sleeps, or in a network change, waits forever."""
+    return 60 + len(spoken) / 5
+
+
 def _join(paths, pauses, target, ff):
     """Each TTS segment comes with up to a second of its own silence: trim it and join with measured pauses.
     The result keeps the service's format (24 kHz mono, 48 kbit/s CBR, no tags), so clips still concatenate."""
@@ -439,23 +448,27 @@ async def synthesize(clips, cache_dir, voices, concurrency=6):
         if path.exists() and path.stat().st_size > 256 and (not marks or words.exists()):
             return path
         async with semaphore:
-            last = None
-            for attempt in range(4):
+            last, limit = None, _time_limit(spoken)
+            for attempt in range(TRIES):
                 try:
                     temporary, told = path.with_suffix(f".part{attempt}"), words.with_suffix(f".part{attempt}")
-                    await _communicate(edge_tts, spoken, voice, rate or "+0%", marks).save(
+                    request = _communicate(edge_tts, spoken, voice, rate or "+0%", marks).save(
                         str(temporary), str(told) if marks else None)
+                    await asyncio.wait_for(request, limit)
                     require(temporary.stat().st_size > 256, "empty audio returned")
                     if marks:
                         told.replace(words)
                     temporary.replace(path)
                     return path
-                except Exception as error:      # network and provider errors vary by release
+                except Exception as error:      # network and provider errors vary by release; the time limit too
                     last = error
                     temporary.unlink(missing_ok=True)
                     told.unlink(missing_ok=True)
-                    await asyncio.sleep(1.0 * (attempt + 1))
-            raise SpeechError(f"TTS failed for {spoken[:60]!r}: {last}")
+                    if attempt + 1 < TRIES:
+                        await asyncio.sleep(RETRY_SECONDS * (attempt + 1))
+            # a timeout has no message of its own: name its type, so the reason is never empty
+            raise SpeechError(f"TTS failed for {spoken[:60]!r} ({TRIES} tries of at most {limit:.0f} s): "
+                              f"{str(last) or type(last).__name__}")
 
     async def clip(item):
         target, words = clip_dir / f"{item.clip_id}.mp3", clip_dir / f"{item.clip_id}.words.json"

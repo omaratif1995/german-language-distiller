@@ -1,5 +1,12 @@
 """Tests for language-aware speech: German words must always reach the German voice."""
+import asyncio
+import contextlib
+from pathlib import Path
+import sys
+import tempfile
+import types
 import unittest
+from unittest import mock
 
 import speech
 
@@ -132,6 +139,52 @@ class SpeechTests(unittest.TestCase):
         self.assertEqual(speech.speakable("Subjekt + werden + … + Partizip II", "de"), "Subjekt, werden, Partizip zwei")
         self.assertEqual(speech.speakable("aussehen → das Aussehen", "de"), "aussehen wird zu das Aussehen")
         self.assertEqual(speech.speakable("flat / thin", "en"), "flat or thin")
+
+
+class FakeVoice:
+    """edge_tts.Communicate without the network. The requests numbered in `hang` never get an answer, like one sent
+    just before the computer slept; the others return a little audio. Each writes some audio first, as edge-tts does."""
+    hang, requests = set(), 0
+
+    def __init__(self, text, voice, rate, boundary=None):
+        pass
+
+    async def save(self, audio, words=None):
+        FakeVoice.requests += 1
+        Path(audio).write_bytes(b"\xff\xf3" * 600)
+        if FakeVoice.requests in FakeVoice.hang:
+            await asyncio.Event().wait()
+
+
+class VoiceRequestTests(unittest.TestCase):
+    @contextlib.contextmanager
+    def voice_service(self, hang):
+        FakeVoice.hang, FakeVoice.requests = set(hang), 0
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch.dict(sys.modules, {"edge_tts": types.SimpleNamespace(Communicate=FakeVoice)}), \
+                mock.patch.object(speech, "_time_limit", lambda spoken: 0.05), \
+                mock.patch.object(speech, "RETRY_SECONDS", 0):
+            yield Path(folder)
+
+    def test_a_request_without_an_answer_is_sent_again(self):
+        item = speech.make_clip("Hör gut zu.", "de", VOICES)
+        with self.voice_service(hang={1}) as cache:
+            made = asyncio.run(speech.synthesize({item.clip_id: item}, cache, VOICES))
+            self.assertGreater(made[item.clip_id].stat().st_size, 256)
+            self.assertEqual(FakeVoice.requests, 2)
+            self.assertEqual([p.name for p in (cache / "segments").iterdir() if ".part" in p.name], [])
+
+    def test_a_voice_service_that_never_answers_ends_with_a_reason(self):
+        item = speech.make_clip("Hör gut zu.", "de", VOICES)
+        with self.voice_service(hang=range(1, 10)) as cache:
+            with self.assertRaisesRegex(speech.SpeechError, r"'Hör gut zu\.' \(4 tries of at most 0 s\): TimeoutError$"):
+                asyncio.run(speech.synthesize({item.clip_id: item}, cache, VOICES))
+            self.assertEqual(FakeVoice.requests, 4)
+            self.assertEqual(list((cache / "clips").iterdir()), [])
+
+    def test_the_time_limit_leaves_long_texts_time(self):
+        self.assertEqual(speech._time_limit("x" * 20), 64)
+        self.assertGreater(speech._time_limit("x" * 650), 2 * 60)     # 650 characters: about a minute of German speech
 
 
 if __name__ == "__main__":

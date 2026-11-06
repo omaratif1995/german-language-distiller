@@ -64,6 +64,14 @@ def start_browser(browser, profile):
     raise InspectError("the browser did not open a DevTools port")
 
 
+async def within(seconds, waiting, what):
+    """Await `waiting`, or raise an InspectError that says what did not happen in time: a bare timeout says nothing."""
+    try:
+        return await asyncio.wait_for(waiting, seconds)
+    except asyncio.TimeoutError:
+        raise InspectError(f"{what} within {seconds:g} s") from None
+
+
 async def inspect(app, browser, units=None, answers=10):
     import aiohttp
     checker = CHECKER.read_text(encoding="utf-8")
@@ -82,12 +90,12 @@ async def inspect(app, browser, units=None, answers=10):
                         loaded.set()
             reader = asyncio.create_task(read())
 
-            async def call(method, params=None, session=None, timeout=30):
+            async def call(method, params=None, session=None, timeout=30, late=None):
                 key = next(ids)
                 pending[key] = asyncio.get_running_loop().create_future()
                 await socket.send_json({"id": key, "method": method, "params": params or {},
                                         **({"sessionId": session} if session else {})})
-                reply = await asyncio.wait_for(pending[key], timeout)
+                reply = await within(timeout, pending[key], late or f"the browser did not answer {method}")
                 if "error" in reply:
                     raise InspectError(f"{method}: {reply['error'].get('message')}")
                 return reply.get("result", {})
@@ -98,13 +106,14 @@ async def inspect(app, browser, units=None, answers=10):
             await call("Emulation.setDeviceMetricsOverride", PHONE, page)
             await call("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5}, page)
             await call("Page.navigate", {"url": Path(app).resolve().as_uri()}, page)
-            await asyncio.wait_for(loaded.wait(), 120)          # a course with audio is 40-60 MB
+            await within(120, loaded.wait(), "the app did not finish loading")    # a course with audio is 40-130 MB
             chosen = json.dumps(units) if units else "[...document.getElementById('pick').options].map(o => o.value)"
             count = len(units) if units else (await call("Runtime.evaluate", {
                 "expression": "document.getElementById('pick').options.length", "returnByValue": True}, page))["result"]["value"]
             evaluated = await call("Runtime.evaluate", {
                 "expression": f"window.GAME_CHECK = {{units: {chosen}, answers: {int(answers)}}};\n{checker}",
-                "awaitPromise": True, "returnByValue": True}, page, timeout=60 + SECONDS_PER_UNIT * count)
+                "awaitPromise": True, "returnByValue": True}, page, timeout=60 + SECONDS_PER_UNIT * count,
+                late=f"the games of {count} unit(s) did not finish")
             if evaluated.get("exceptionDetails"):
                 raise InspectError(json.dumps(evaluated["exceptionDetails"])[:500])
             reader.cancel()
@@ -141,7 +150,7 @@ def main(argv=None):
         result = asyncio.run(inspect(args.app, find_browser(args.browser),
                                      args.units.split(",") if args.units else None, args.answers))
     except (InspectError, OSError, asyncio.TimeoutError) as error:
-        print(f"FAIL: {error or 'timed out'}", file=sys.stderr)
+        print(f"FAIL: {str(error) or type(error).__name__}", file=sys.stderr)     # never an empty reason
         return 2
     print(json.dumps(result, ensure_ascii=False, indent=1) if args.json else summary(result))
     return 0 if result["passed"] else 1
