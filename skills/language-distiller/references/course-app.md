@@ -104,7 +104,9 @@ Requirements: `pip install edge-tts pyspellchecker imageio-ffmpeg` (or a system 
 
 ## App
 
-`build_course_app.py --course course.json --output <Name>_Studienpaket_vN.html` (or `--no-audio`).
+`build_course_app.py --course course.json --output <Name>_Studienpaket_vN.html` (or `--no-audio`; `--no-english` leaves out the English meanings and translations, a quarter less audio).
+
+The app has four tabs: **Lernen**, **Hören**, **Üben** and **Spielen** (without audio there is no Hören).
 
 **Lernen**
 - All reviewed sheets in course order, a unit picker with ‹ › (by book, when units have a `group`), and a search over all cards that shows each hit under its unit and subheading, without the empty ones.
@@ -113,7 +115,8 @@ Requirements: `pip install edge-tts pyspellchecker imageio-ffmpeg` (or a system 
 - The **Geschichte** at the end of each unit: a **🔊 Ganze Geschichte** button on the story header to play the whole story straight through, a 🔊 per paragraph, and a tap on any sentence repeats that sentence. A tap on an underlined word shows its meaning and speaks it.
 - **🎧 Anhören** opens a small panel in the unit's header:
   - **▶ Weiter** (once a session was stopped): goes on where it stopped;
-  - three ways to listen: **Ganze Lektion** (German vocabulary and expressions, grammar explained, then the story), **Nur Beispiele** (only the German example sentences) and **Geschichte**;
+  - five ways to listen: **Ganze Lektion** (German vocabulary and expressions, grammar explained, then the story), **Wörter** (the words and the Redemittel), **Nur Beispiele** (only the German example sentences), **Grammatik** (each explanation, then its examples) and **Geschichte**;
+  - **Sprache Nur Deutsch · Deutsch + Englisch**: with English, every word or phrase is followed by its meaning and every example by its translation, once, after the German plays (explanations and stories stay German);
   - **Jeder Satz 1× · 2× · 3× · 5×**: how often each German sentence is played before the next one;
   - **Am Ende Einmal · ⟳ Endlos**: stop at the end, or start the unit again;
   - **🔊-Taste 1× · 3× · ∞**: what a single 🔊 tap does.
@@ -121,6 +124,13 @@ Requirements: `pip install edge-tts pyspellchecker imageio-ffmpeg` (or a system 
   The session is joined on the device into one continuous audio track with lock-screen and headphone controls (⏯ ⏮ ⏭), so playback continues when the phone screen turns off; when the screen is on, the current card or sentence is highlighted and scrolled into view. A bar at the bottom shows what is playing, with ⏮ (this sentence again; right at its start, the one before), ⏸ / ▶ (pause, then go on in the same sentence), ⏭ (the next sentence now) and ✕ (end). A 🔊 tap during a session pauses it and plays that clip; when the clip stops, the session waits, paused, in the bar. Settings changed during a session apply at once, and all settings are remembered.
 
   Pauses separate without dragging: before the same sentence again about 0.8 s after a word and 1.35 s after a sentence; before the next one about 1.5–2 s after an example, less after headwords and story sentences, more at the end of a paragraph. They are measured from the voice: each clip's own lead-in and tail are trimmed when the track is built.
+
+**Hören**: the course to listen to, for the commute or a walk.
+- **Was möchtest du hören?** Five tiles: **Alles** (each unit as in *Ganze Lektion*), **Wörter**, **Beispiele**, **Grammatik** and **Geschichten**. A tap starts; a tap on the one playing stops it.
+- **Aus welchen Lektionen?** *Nur Lektion 16*, *Ab Lektion 16* (to the end of the course; the lesson is the one in the picker), one chip per book when units have a `group`, or *Alle Lektionen*.
+- **So klingt es:** the same *Sprache*, *Jeder Satz* and *Am Ende* as the panel, shared with it; *⟳ Endlos* starts the whole choice again.
+- Unit after unit, each opening with its spoken name. Each unit is one track, as in the panel, and the next one is built while the last plays, so it goes on at once, also with the screen off; the bar names the unit (*Lektion 14 · 3 / 57*). A card at the top shows what is heard, big: the sentence or word, and its English when the learner listens with English.
+- **▶ Weiter** goes on where a stopped session stopped, across units. Lernen and Hören share a running session: in Lernen it shows the unit being heard, highlights the card and lights the spoken sentence; choosing another lesson does not stop it. Üben and Spielen stop it, since they make their own sounds.
 
 **Üben**
 - One card per sheet card. Vocabulary goes German → English, with English → German optional. Grammar shows its title and asks for the rule and examples. Redemittel show the situation and meaning in English and ask for the German frame, because that is the choice the learner makes while speaking or writing.
@@ -148,12 +158,12 @@ A tap is ignored for 0.3 s after a new question appears, so a tap meant for the 
 
 ## Size and performance
 
-German clips are embedded at 32 kbit/s and the explanations at 24 kbit/s. A 16-unit course with spoken explanations is about 65 MB, two books in one course about 130 MB.
+German clips are embedded at 32 kbit/s, the explanations and the English meanings and translations at 24 kbit/s (`--english-bitrate`). A 16-unit course with spoken explanations is about 65 MB, or 85 MB with English; two books in one course about 130 MB, or 170 MB with English.
 
 - **The first screen:** a small script in the page head hides every unit but the one the learner was on before the page reads them, and the bar shows the remembered tab and unit from the first paint. Without it the phone laid out the whole course while the page loaded, which took longer than reading it.
-- **The sound:** the clips sit in per-unit text blocks after the app script, so the app works before the audio has finished loading. A unit's sounds work as soon as the page has read its block, and are unpacked on first use. A 🔊 tap before then shows *wird vorbereitet …* and plays when they arrive; a card's word asked for in that time plays then too.
+- **The sound:** the clips sit in per-unit text blocks after the app script, so the app works before the audio has finished loading; the English blocks come after all the German ones. A unit's sounds work as soon as the page has read its block, and are unpacked on first use. A 🔊 tap before then shows *wird vorbereitet …* and plays when they arrive; a card's word asked for in that time plays then too.
 
-Measured with headless Chrome at 6× CPU slowdown, about a mid-range phone, on the 129 MB, 32-unit course: the app works after 1.9–2.4 s (4.4–4.7 s without the head script) and has loaded everything after 6–9 s; on a desktop it is about 1 s. For quick sharing or old phones, also build a `--no-audio` copy (2–3 MB) and hand over the MP3 episodes.
+Measured with headless Chrome at 6× CPU slowdown, about a mid-range phone, on the 129 MB, 32-unit course: the app works after 1.9–2.4 s (4.4–4.7 s without the head script) and has loaded everything after 6–9 s; on a desktop it is about 1 s. With English (168 MB) the app works just as soon and the German sound arrives at the same time; the English, at the end of the file, adds about a fifth to the full load. For quick sharing or old phones, also build a `--no-audio` copy (2–3 MB) and hand over the MP3 episodes.
 
 ## Delivery notes
 

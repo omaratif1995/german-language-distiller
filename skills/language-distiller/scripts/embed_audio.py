@@ -224,12 +224,15 @@ def lesson_plan(lesson, voices=None, narration=None):
         clips.setdefault(clip.clip_id, clip)
         return clip.clip_id
 
+    english = {f'{record["id"]}-head': add(record["gloss"], "en")          # a word's or a phrase's meaning
+               for section in ("vocabulary", "redemittel") for record in lesson[section]}
+    english.update({f'{record["id"]}-ex-{index}': add(example["en"], "en")  # an example's translation
+                    for section in ("vocabulary", "grammar", "redemittel") for record in lesson[section]
+                    for index, example in enumerate(record["examples"])})
     plan = {"title": add(lesson["title"]),
             "sections": {key: add(name) for key, name in sections_of(lesson).items() if key != "story" or lesson.get("story")},
             "sequence": sequence, "controls": controls, "explain": explain, "explain_en": explain_en, "story": [],
-            "english": {f'{record["id"]}-ex-{index}': add(example["en"], "en")
-                        for section in ("vocabulary", "grammar", "redemittel") for record in lesson[section]
-                        for index, example in enumerate(record["examples"])}}
+            "english": english}
     number = 0
     for paragraph in (lesson.get("story") or {}).get("paragraphs", []):
         ids = []
@@ -241,26 +244,31 @@ def lesson_plan(lesson, voices=None, narration=None):
 
 
 # ---------------------------------------------------------------- listening orders ---
-# Each step is [clip id, pause factor, id of the element to highlight, repeatable]. The pause before the next step
-# grows with the factor and the clip's length, to about 2 s after an example (LISTEN_JS: after); a repeatable
-# (German) step is played as often as the learner chose, with a shorter pause between the plays (again).
+# Each step is [clip id, pause factor, id of the element to highlight, repeatable, English clip id (optional)]. The pause
+# before the next step grows with the factor and the clip's length, to about 2 s after an example (LISTEN_JS: after); a
+# repeatable (German) step is played as often as the learner chose, with a shorter pause between the plays (again), and
+# then, if the learner listens with English, its English meaning once.
+def german_step(plan, key, factor, spot):
+    """A German word, phrase or example that repeats, with its English meaning or translation when the plan has one."""
+    english = plan.get("english", {}).get(key)
+    return [plan["controls"][key], factor, spot, 1] + ([english] if english else [])
+
+
 def listening_order(prefix, lesson, plan):
     """The whole lesson: vocabulary and expressions, grammar explained, then the story read through."""
     c, seq = plan["controls"], []
     seq += [[plan["title"], 0.3, None, 0], [plan["sections"]["vocabulary"], 0.3, None, 0]]
     for rec in lesson["vocabulary"]:
-        seq.append([c[f'{rec["id"]}-head'], 0.6, prefix + rec["id"], 1])
-        seq += [[c[f'{rec["id"]}-ex-{i}'], 1.0, f'{prefix}{rec["id"]}-x{i}', 1] for i in range(len(rec["examples"]))]
+        seq.append(german_step(plan, f'{rec["id"]}-head', 0.6, prefix + rec["id"]))
+        seq += [german_step(plan, f'{rec["id"]}-ex-{i}', 1.0, f'{prefix}{rec["id"]}-x{i}') for i in range(len(rec["examples"]))]
     if lesson["grammar"]:
         seq.append([plan["sections"]["grammar"], 0.3, None, 0])
-    for rec in lesson["grammar"]:
-        seq += [[cid, 0.4, prefix + rec["id"], 0] for cid in plan["explain"][rec["id"]]]
-        seq += [[c[f'{rec["id"]}-ex-{i}'], 1.0, f'{prefix}{rec["id"]}-x{i}', 1] for i in range(len(rec["examples"]))]
+    seq += grammar_order(prefix, lesson, plan)
     seq.append([plan["sections"]["redemittel"], 0.3, None, 0])
     for rec in lesson["redemittel"]:
-        seq.append([c[f'{rec["id"]}-head'], 0.8, prefix + rec["id"], 1])
+        seq.append(german_step(plan, f'{rec["id"]}-head', 0.8, prefix + rec["id"]))
         seq += [[c[f'{rec["id"]}-variant-{i}'], 0.8, prefix + rec["id"], 1] for i in range(len(rec.get("variants", [])))]
-        seq += [[c[f'{rec["id"]}-ex-{i}'], 1.0, f'{prefix}{rec["id"]}-x{i}', 1] for i in range(len(rec["examples"]))]
+        seq += [german_step(plan, f'{rec["id"]}-ex-{i}', 1.0, f'{prefix}{rec["id"]}-x{i}') for i in range(len(rec["examples"]))]
     if plan["story"]:
         seq.append([plan["sections"]["story"], 0.3, None, 0])
         seq += [[step[0], step[1], step[2], 0] for step in story_order(prefix, plan)]
@@ -269,9 +277,24 @@ def listening_order(prefix, lesson, plan):
 
 def examples_order(prefix, lesson, plan):
     """Only the example sentences, in reading order."""
-    return [[plan["controls"][f'{rec["id"]}-ex-{i}'], 1.0, f'{prefix}{rec["id"]}-x{i}', 1]
+    return [german_step(plan, f'{rec["id"]}-ex-{i}', 1.0, f'{prefix}{rec["id"]}-x{i}')
             for section in ("vocabulary", "grammar", "redemittel") for rec in lesson[section]
             for i in range(len(rec["examples"]))]
+
+
+def words_order(prefix, lesson, plan):
+    """Only the words and the Redemittel, each with its meaning in English when the learner listens with English."""
+    return [german_step(plan, f'{rec["id"]}-head', 0.6, prefix + rec["id"])
+            for section in ("vocabulary", "redemittel") for rec in lesson[section]]
+
+
+def grammar_order(prefix, lesson, plan):
+    """Every grammar point: its spoken explanation (followed on the card), then its examples."""
+    seq = []
+    for rec in lesson["grammar"]:
+        seq += [[cid, 0.4, prefix + rec["id"], 0] for cid in plan["explain"][rec["id"]]]
+        seq += [german_step(plan, f'{rec["id"]}-ex-{i}', 1.0, f'{prefix}{rec["id"]}-x{i}') for i in range(len(rec["examples"]))]
+    return seq
 
 
 def story_order(prefix, plan):
@@ -374,6 +397,8 @@ AUDIO_CSS = r"""
   .lp-modes button{font:inherit;font-size:15px;font-weight:700;min-height:46px;border-radius:12px;cursor:pointer;color:#1a1030;background:var(--accent2);border:0}
   .lp-modes button[data-m="ex"]{background:#f2d36b}
   .lp-modes button[data-m="story"]{background:#6ee7b7}
+  .lp-modes button[data-m="words"]{background:#93c5fd}
+  .lp-modes button[data-m="gram"]{background:#f9a8d4}
   .lp-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:7px 0 0}
   .lp-row>span{flex:0 0 92px;font-size:12.5px;color:#dbe2ea;letter-spacing:.3px}
   .lp-row .chips{display:flex;gap:6px;flex-wrap:wrap}
@@ -403,7 +428,8 @@ AUDIO_CSS = r"""
 
 LISTEN_HTML = """<div class="lp" id="lp" hidden data-unit="">
 <button type="button" class="lp-go" id="lp-go" hidden></button>
-<div class="lp-modes"><button type="button" data-m="all">▶ Ganze Lektion</button><button type="button" data-m="ex">▶ Nur Beispiele</button><button type="button" data-m="story">▶ Geschichte</button></div>
+<div class="lp-modes"><button type="button" data-m="all">▶ Ganze Lektion</button><button type="button" data-m="words">▶ Wörter</button><button type="button" data-m="ex">▶ Nur Beispiele</button><button type="button" data-m="gram">▶ Grammatik</button><button type="button" data-m="story">▶ Geschichte</button></div>
+<div class="lp-row" id="lp-en-row"><span>Sprache</span><div class="chips" id="lp-en"></div></div>
 <div class="lp-row"><span>Jeder Satz</span><div class="chips" id="lp-each"></div></div>
 <div class="lp-row"><span>Am Ende</span><div class="chips" id="lp-loop"></div></div>
 <div class="lp-row"><span>🔊-Taste</span><div class="chips" id="lp-one"></div></div>
@@ -418,25 +444,26 @@ LISTEN_HTML = """<div class="lp" id="lp" hidden data-unit="">
 
 # The listening engine shared by the course app and single audio sheets. The host defines d (document),
 # load/save (settings), need(id) (base64 audio, or '' while the page is still loading it), whenAudio(ids) (a promise
-# kept once those clips can be read), and the objects SEQ, EXS and STO: per unit, the steps of "Ganze Lektion",
-# "Nur Beispiele" and "Geschichte".
+# kept once those clips can be read), the objects SEQ, EXS, WRD, GRM and STO (per unit, the steps of "Ganze Lektion",
+# "Nur Beispiele", "Wörter", "Grammatik" and "Geschichte"), ENG (true when the English clips are there), heard(r)
+# (what is being played changed; null: nothing plays) and listening() (a session or a setting changed).
 # It runs in the host's scope, so its names must not repeat the host's (the app already has again(), end(), bar).
 LISTEN_JS = r"""
   /* ---------------- listening: every run plays as one audio track, so it goes on with the screen off ---------------- */
-  var A=load('listen',{one:0,each:2,loop:1});     /* one: plays per 🔊 tap (0 = until tapped again); each: plays of every German sentence in a session; loop: start again at the end */
-  var AT=load('listen-at',{});                     /* per unit, where a stopped session goes on: {m: mode, i: step, n: steps, c: first clip} */
+  var A=load('listen',{one:0,each:2,loop:1,en:0}); /* one: plays per 🔊 tap (0 = until tapped again); each: plays of every German sentence in a session; loop: start again at the end; en: each word and example's English after it */
+  var AT=load('listen-at',{});                     /* per unit, where a stopped session goes on: {m: mode, i: step, n: steps, c: first clip}; '*': a course session's, with its list of units and unit u */
   var player=new Audio(), R=null, held=null, lastF=null, lock=null, tipT=null, unlocked=false;
   var RATE=22050, PCM={}, cached=0, SIL={}, decoder=null;      /* clips decoded once, and silences, as small WAV blobs */
   var SILENT='data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQIAAAAAAA==';
   var lp=d.getElementById('lp'), lpGo=d.getElementById('lp-go'), tip=d.getElementById('tip'), nowBar=d.getElementById('now'), nowB=d.getElementById('now-b'),
       nowP=d.getElementById('now-p'), nowN=d.getElementById('now-n'), nowT=d.getElementById('now-t'), nowS=d.getElementById('now-s'), nowX=d.getElementById('now-x');
-  var LABEL={all:'Ganze Lektion',ex:'Nur Beispiele',story:'Geschichte'};
+  var LABEL={all:'Ganze Lektion',words:'Wörter',ex:'Nur Beispiele',gram:'Grammatik',story:'Geschichte'};
   var ICON={play:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
             pause:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zm6.5 0H17v14h-3.5z"/></svg>'};
   /* the silence after a clip, in ms: a short breath before the same sentence again, a little more before the next one */
   function gapAgain(dur){ return 550+250*Math.min(dur,3.2); }          /* 0.8 s after a word, 1.35 s after a sentence */
   function gapNext(dur,f){ return 300+f*(gapAgain(dur)+400); }         /* f: the step's pause factor; 1.5–2 s after an example */
-  function stepsOf(m){ return m==='ex'?EXS:m==='story'?STO:SEQ; }
+  function stepsOf(m){ return m==='ex'?EXS:m==='story'?STO:m==='words'?WRD:m==='gram'?GRM:SEQ; }
   function mark(el,on){ if(el) el.classList.toggle('is-playing',on); }
   function follow(el,stay){ if(lastF) lastF.classList.remove('follow'); lastF=el||null; if(!el) return; el.classList.add('follow'); if(stay) return;
     var b=el.getBoundingClientRect(); if(b.top<90||b.bottom>innerHeight-90) el.scrollIntoView({block:'center',behavior:'smooth'}); }
@@ -473,16 +500,18 @@ LISTEN_JS = r"""
   function quiet(ms){ var n=Math.round(ms*RATE/1000); return SIL[n]||(SIL[n]={b:new Blob([new Int16Array(n)]),n:n}); }
   function decodeAll(list,k,fn){ var i=0, w=[]; function more(){ return i<list.length?fn(list[i++]).then(more):null; }
     for(var j=0;j<k;j++) w.push(more()); return Promise.all(w); }
-  /* marks[k] = {i: step, at: its first sample, end: the sample after its last play}; an endless run is one round that loops */
-  function track(r){ var items=r.items, n=items.length, each=r.o.each||1, laps=r.o.laps||0, rounds=laps||1, ids={};
-    items.forEach(function(it){ ids[it[0]]=1; });
+  /* marks[k] = {i: step, at: its first sample, end: the sample after its last play}; an endless run is one round that loops.
+     With English, a word's meaning or an example's translation follows its German plays once (step[4]). */
+  function track(r){ var items=r.items, n=items.length, each=r.o.each||1, laps=r.o.laps||0, rounds=laps||1, en=ENG&&!!r.o.en, ids={};
+    items.forEach(function(it){ ids[it[0]]=1; if(en&&it[4]) ids[it[4]]=1; });
     return whenAudio(Object.keys(ids)).then(function(){ return decodeAll(Object.keys(ids),4,pcm); }).then(function(){   /* only this run's clips */
       var parts=[], marks=[], at=0, lap, k, q;
       function add(p){ parts.push(p.b); at+=p.n; }
       for(lap=0;lap<rounds;lap++){
         for(k=0;k<n;k++){ var it=items[k], c=PCM[it[0]], reps=it[3]?each:1, m={i:k,at:at,end:at}; marks.push(m); if(!c) continue; m.cut=c.cut;
-          var dur=c.n/RATE, last=laps&&lap===rounds-1&&k===n-1;                 /* a finite run ends right after its last sound */
+          var dur=c.n/RATE, last=laps&&lap===rounds-1&&k===n-1, e=en&&it[4]?PCM[it[4]]:null;   /* a finite run ends right after its last sound */
           for(q=0;q<reps;q++){ add(c); m.end=at; if(q<reps-1) add(quiet(gapAgain(dur))); }
+          if(e){ add(quiet(450)); add(e); m.end=at; dur=e.n/RATE; }
           if(!last) add(quiet(n>1?gapNext(dur,it[1]):gapAgain(dur))); }
         if(n>1&&!(laps&&lap===rounds-1)) add(quiet(1000)); }                    /* a breath before the next round */
       if(cached>RATE*1200){ PCM={}; cached=0; }                                  /* keep about 20 minutes decoded, no more */
@@ -508,38 +537,52 @@ LISTEN_JS = r"""
   function attach(r,play){ player.loop=!r.o.laps; player.src=r.t.url; r.last=r.pos;
     player.onloadedmetadata=function(){ player.onloadedmetadata=null; if(R!==r) return; player.currentTime=r.pos; if(play&&!r.paused) go(); }; }
   function prepare(r,from){ r.ready=false; r.from=from; showBar();
-    track(r).then(function(t){ if(R!==r&&held!==r){ if(t) URL.revokeObjectURL(t.url); return; }
+    var pre=r.o.pre; r.o.pre=null;                                             /* a course's next unit, built while the last one played */
+    (pre?Promise.resolve(pre):track(r)).then(function(t){ if(R!==r&&held!==r){ if(t) URL.revokeObjectURL(t.url); return; }
       if(!t){ if(R===r) endRun(); return; }
       var old=r.t, k=0; while(k<t.marks.length-1&&t.marks[k].i<from) k++;
       r.t=t; r.pos=t.marks[k].at/RATE; r.cur=t.marks[k].i; r.ready=true;
-      if(R===r){ if(r.o.follow) follow(spot(r.items[r.cur])); attach(r,true); showBar(); } if(old) URL.revokeObjectURL(old.url); }); }
+      if(R===r){ if(r.o.follow) follow(spot(r.items[r.cur])); attach(r,true); showBar(); heard(r); ahead(r); } if(old) URL.revokeObjectURL(old.url); }); }
+  /* a course session plays unit after unit: while one plays, the next one's track is built, so the next starts at once */
+  function ahead(r){ if(!r.o.then||r.next) return; var a=r.o.then(); if(!a) return;
+    var q=r.next={items:a[0],o:a[1],t:null};
+    track(q).then(function(t){ if(r.next===q) q.t=t; else if(t) URL.revokeObjectURL(t.url); }); }
   function remember(r,t){ var m=r.t.marks[markAt(r,t)], i=m.i+(t*RATE>=m.end&&m.end>m.at?1:0);
+    if(r.o.course){ if(i<r.items.length) AT['*']={m:r.o.mode,list:r.o.course.list,u:r.o.unit,i:i,n:r.items.length,c:r.items[0][0]}; return; }
     if(i>0&&i<r.items.length) AT[r.o.unit]={m:r.o.mode,i:i,n:r.items.length,c:r.items[0][0]}; }
   function drop(r){ var live=R===r&&r.ready&&player.src===r.t.url, t=live?player.currentTime:(r.pos||0); if(R===r) sayOff();
     if(R===r){ player.pause(); player.removeAttribute('src'); try{ player.load(); }catch(e){} }
     mark(r.o.btn,false); if(r.o.btn&&r.o.btn.getAttribute('data-l')){ r.o.btn.textContent=r.o.btn.getAttribute('data-l'); r.o.btn.removeAttribute('data-l'); }
-    if(r.o.mode){ if(r.done) delete AT[r.o.unit]; else if(r.ready) remember(r,t); save('listen-at',AT); }
+    if(r.o.mode){ if(r.done){ if(!r.o.course) delete AT[r.o.unit]; } else if(r.ready) remember(r,t); save('listen-at',AT); }
+    if(r.next){ if(r.next.t) URL.revokeObjectURL(r.next.t.url); r.next=null; }
     if(r.t) URL.revokeObjectURL(r.t.url); r.t=null; r.ready=false; }
-  function stopAll(){ asked++; if(R) drop(R); if(held) drop(held); R=held=null; follow(null); wake(false); if(nowBar) nowBar.hidden=true; }
-  /* items: [clip id, pause factor, element (or its id) to highlight, repeatable]; o: {btn, each, laps (0 = endless), follow, stop, label},
-     and for a session from the panel also unit, mode and at (its first step) */
+  function stopAll(){ asked++; if(R) drop(R); if(held) drop(held); R=held=null; follow(null); wake(false); if(nowBar) nowBar.hidden=true; heard(null); listening(); }
+  /* items: [clip id, pause factor, element (or its id) to highlight, repeatable, English clip]; o: {btn, each, laps (0 = endless),
+     follow, stop, label, en (with English)}, for a session also unit, mode and at (its first step), and for a course session
+     course ({list: its units}), where (the unit's name for the bar) and then() ([items, o] of the next unit, or null) */
   function run(items,o){ if(!items||!items.length) return; asked++;
     if(!o.mode&&(held||R&&R.o.mode)){                      /* a 🔊 tap during a session holds the session: it waits in the bar, paused */
       if(R&&R.o.mode){ held=R; if(held.ready&&player.src===held.t.url) held.pos=player.currentTime; held.paused=true; player.pause(); mark(held.o.btn,false); }
       else if(R) drop(R); }
     else stopAll();
     var r=R={items:items,o:o,cur:-1,from:Math.min(o.at||0,items.length-1),lap:1,paused:false,ready:false};
-    if(o.mode&&AT[o.unit]){ delete AT[o.unit]; save('listen-at',AT); }
+    if(o.mode&&!o.course&&AT[o.unit]){ delete AT[o.unit]; save('listen-at',AT); }
     mark(o.btn,true); if(o.btn&&o.stop){ o.btn.setAttribute('data-l',o.btn.textContent); o.btn.textContent=o.stop; }
-    media(r); if(items.length>1||!o.laps) wake(true); prepare(r,r.from); }
+    media(r); if(items.length>1||!o.laps) wake(true); prepare(r,r.from); listening(); }
   function endRun(){ var r=R; if(!r) return;
     if(!r.o.mode&&held){ drop(r); R=held; held=null; R.paused=true; follow(R.cur>=0?spot(R.items[R.cur]):null,true); wake(false); media(R);
-      if(R.ready) attach(R,false); showBar(); return; }                         /* back to the held session, paused */
-    stopAll(); }
+      if(R.ready) attach(R,false); showBar(); heard(R); listening(); return; }   /* back to the held session, paused */
+    var nx=null;
+    if(r.done&&r.o.then){ nx=r.next; if(!nx){ var a=r.o.then(); nx=a&&{items:a[0],o:a[1],t:null}; } }
+    r.next=null;                                                               /* handed on, not thrown away */
+    if(r.done&&r.o.course&&!nx){ delete AT['*']; save('listen-at',AT); }      /* the whole course was heard */
+    stopAll();
+    if(nx){ nx.o.pre=nx.t; run(nx.items,nx.o); } }
   function showBar(){ var r=R; if(!nowBar||!r) return; var n=r.items.length, many=n>1, s=[], icon=r.paused?'play':'pause';
     nowBar.hidden=false; nowBar.classList.toggle('paused',!!r.paused); nowB.hidden=nowN.hidden=!many;
     if(nowP.getAttribute('data-s')!==icon){ nowP.setAttribute('data-s',icon); nowP.innerHTML=ICON[icon];
       nowP.setAttribute('aria-label',r.paused?'Weiter':'Pause'); nowP.title=r.paused?'Weiter':'Pause'; }
+    if(r.o.where) s.push(r.o.where);
     if(many) s.push((r.cur<0?r.from:r.cur)+1+' / '+n);
     if(!r.ready) s.push('wird vorbereitet …');
     else{ if(many&&(r.o.each||1)>1) s.push('je '+r.o.each+'×');
@@ -566,32 +609,37 @@ LISTEN_JS = r"""
     readAlong(r,m,t);
     if(r.o.laps) r.lap=Math.floor(k/r.items.length)+1; else if(t+1<r.last) r.lap++;            /* an endless run counts its rounds */
     r.last=t; if(m.i===r.cur){ if(lap!==r.lap) showBar(); return; }
-    r.cur=m.i; if(r.o.follow) follow(spot(r.items[m.i])); showBar();
+    r.cur=m.i; if(r.o.follow) follow(spot(r.items[m.i])); showBar(); heard(r);
     if(r.o.mode){ remember(r,t); save('listen-at',AT); } });                                  /* even if the phone closes the page */
   player.addEventListener('ended',function(){ var r=R; if(r&&r.ready&&player.src===r.t.url){ r.done=true; endRun(); } });
   player.addEventListener('pause',function(){ var r=R; if(!r||r.paused||!r.ready||player.src!==r.t.url||player.ended) return;
     r.paused=true; mark(r.o.btn,false); wake(false); showBar(); });                           /* paused from outside (a call, another app) */
   player.addEventListener('play',function(){ var r=R; if(r&&r.paused&&r.ready&&player.src===r.t.url){ r.paused=false; mark(r.o.btn,true); showBar(); } });
   /* ---- the panel ---- */
-  function chipRow(id,items,value,set){ var box=d.getElementById(id); box.innerHTML='';
+  function chipRow(id,items,value,set){ var box=d.getElementById(id); if(!box) return; box.innerHTML='';
     items.forEach(function(it){ var b=d.createElement('button'); b.type='button'; b.textContent=it[1]; b.setAttribute('aria-pressed',String(it[0]===value));
-      b.addEventListener('click',function(){ set(it[0]); save('listen',A); liveSettings(); panel(); }); box.appendChild(b); }); }
-  function liveSettings(){ [R,held].forEach(function(r){ if(!r||!r.o.mode||r.o.each===A.each&&r.o.laps===(A.loop?0:1)) return;
+      b.addEventListener('click',function(){ set(it[0]); save('listen',A); liveSettings(); panel(); listening(); }); box.appendChild(b); }); }
+  function liveSettings(){ [R,held].forEach(function(r){ if(!r||!r.o.mode) return;
+      var laps=r.o.course?1:A.loop?0:1, en=!!A.en;                               /* a course plays its units once each, and loops as a whole */
+      if(r.next){ if(r.next.t) URL.revokeObjectURL(r.next.t.url); r.next=null; }   /* the next unit is built again, the new way */
+      if(r.o.each===A.each&&r.o.laps===laps&&!!r.o.en===en) return;
       var t=R===r&&r.ready&&player.src===r.t.url?player.currentTime:(r.pos||0), from=r.ready?r.t.marks[markAt(r,t)].i:r.from;
-      r.o.each=A.each; r.o.laps=A.loop?0:1; prepare(r,from); });              /* a running session follows the panel from its current sentence */
+      r.o.each=A.each; r.o.laps=laps; r.o.en=en; prepare(r,from); });           /* a running session follows the panel from its current sentence */
     showBar(); }
+  var EN_CHIPS=[[0,'Nur Deutsch'],[1,'Deutsch + Englisch']];
   function panel(){ chipRow('lp-each',[[1,'1×'],[2,'2×'],[3,'3×'],[5,'5×']],A.each,function(v){A.each=v;});
     chipRow('lp-loop',[[0,'Einmal'],[1,'⟳ Endlos']],A.loop,function(v){A.loop=v;});
     chipRow('lp-one',[[1,'1×'],[3,'3×'],[0,'∞ bis Stopp']],A.one,function(v){A.one=v;});
+    chipRow('lp-en',EN_CHIPS,A.en?1:0,function(v){A.en=v;}); d.getElementById('lp-en-row').hidden=!ENG;
     var u=lp.getAttribute('data-unit'), at=AT[u], steps=at&&stepsOf(at.m)[u], busy=[R,held].some(function(r){ return r&&r.o.mode&&r.o.unit===u; });
-    lp.querySelector('[data-m="story"]').hidden=!(STO[u]&&STO[u].length);
+    ['words','gram','story'].forEach(function(m){ var s=stepsOf(m)[u]; lp.querySelector('[data-m="'+m+'"]').hidden=!(s&&s.length); });
     lpGo.hidden=busy||!(steps&&steps.length===at.n&&steps[0][0]===at.c&&at.i>0&&at.i<steps.length);    /* a stopped session goes on where it stopped */
     if(!lpGo.hidden) lpGo.textContent='▶ Weiter: '+LABEL[at.m]+' · '+(at.i+1)+' / '+steps.length; }
   function openPanel(btn){ var u=btn.getAttribute('data-unit'), row=btn.closest('.listen-row');
     if(!lp.hidden&&lp.getAttribute('data-unit')===u){ lp.hidden=true; return; }
     row.parentNode.insertBefore(lp,row.nextSibling); lp.setAttribute('data-unit',u); lp.hidden=false; panel(); }
   function session(u,m,at){ lp.hidden=true;
-    run(stepsOf(m)[u],{btn:d.querySelector('.listen-open[data-unit="'+u+'"]'),each:A.each,laps:A.loop?0:1,follow:true,label:LABEL[m],unit:u,mode:m,at:at||0}); }
+    run(stepsOf(m)[u],{btn:d.querySelector('.listen-open[data-unit="'+u+'"]'),each:A.each,laps:A.loop?0:1,follow:true,label:LABEL[m],unit:u,mode:m,at:at||0,en:!!A.en}); }
   function gloss(w){ var t=w.getAttribute('title')||w.getAttribute('data-t'); if(!t||!tip) return;
     if(w.getAttribute('title')){ w.setAttribute('data-t',t); w.removeAttribute('title'); }      /* no native tooltip on top of ours */
     tip.textContent=t; tip.hidden=false; var b=w.getBoundingClientRect();
@@ -623,11 +671,14 @@ AUDIO_JS = r"""
 <script>
 (function(){
   'use strict';
-  var d=document, P=__PAYLOADS__, SEQ={L:__SEQUENCE__}, EXS={L:__EXAMPLES__}, STO={L:__STORY__};
+  var d=document, P=__PAYLOADS__, SEQ={L:__SEQUENCE__}, EXS={L:__EXAMPLES__}, WRD={L:__WORDS__}, GRM={L:__GRAMMAR__}, STO={L:__STORY__};
+  var ENG=true;                                                      /* a sheet carries every clip, the English ones too */
   function load(k,dflt){ try{ var v=localStorage.getItem('study-sheet:'+k); return v?JSON.parse(v):dflt; }catch(e){ return dflt; } }
   function save(k,v){ try{ localStorage.setItem('study-sheet:'+k,JSON.stringify(v)); }catch(e){} }
   function need(id){ return P[id]||''; }
   function whenAudio(){ return Promise.resolve(); }                  /* a sheet carries its clips in this script */
+  function heard(){}                                                 /* a sheet shows what plays on the sheet itself */
+  function listening(){}
 __LISTEN__
 })();
 </script>
@@ -705,6 +756,8 @@ def inject_audio(document, lesson, payloads, plan):
     script = (AUDIO_JS.replace("__LISTEN__", language.localize(LISTEN_JS, ui))
               .replace("__SEQUENCE__", compact(listening_order("", lesson, plan)))
               .replace("__EXAMPLES__", compact(examples_order("", lesson, plan)))
+              .replace("__WORDS__", compact(words_order("", lesson, plan)))
+              .replace("__GRAMMAR__", compact(grammar_order("", lesson, plan)))
               .replace("__STORY__", compact(story_order("", plan)))
               .replace("__PAYLOADS__", compact(payloads)))
     require("</body>" in document, "HTML has no body end tag")

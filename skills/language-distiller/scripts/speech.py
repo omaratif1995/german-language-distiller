@@ -95,13 +95,13 @@ _BOUNDARY = re.compile(r"[.:;!?()=·|→\[\]]")
 _REGION = re.compile(r"(^|[·(;|,]\s*)(A\s*/\s*CH|CH|A|D\s*\(south\)|D)(?=\s*(?:also\s*)?:)")
 _REGIONS = {"A/CH": "in Österreich und in der Schweiz", "CH": "in der Schweiz", "A": "in Österreich",
             "D(south)": "in Süddeutschland", "D": "in Deutschland"}
-_dictionaries = None
+_spellers = {}                     # spelling dictionaries by language, loaded once each (a load takes about a second)
 
 
 def use(prof):
     """Split and speak text for the target language of this profile (language.profile); German until called."""
     global DE_WORDS, AMBIGUOUS, ARTICLES, _DE, _LONE, _SPELL, _GERMAN_NOTATION, _LETTERS, _UPPER, _LOWER
-    global _SPECIAL, _TOKEN, _dictionaries
+    global _SPECIAL, _TOKEN
     s = prof["speech"]
     DE_WORDS, AMBIGUOUS, ARTICLES = (set(s[key].lower().split()) for key in ("words", "ambiguous", "articles"))
     _DE = tuple(tuple(pair) for pair in s["speakable"])
@@ -109,7 +109,6 @@ def use(prof):
     _LETTERS, _UPPER, _LOWER = s["letters"], s["upper"], s["lower"]
     _SPECIAL = re.compile(f"[{s['special']}]") if s.get("special") else None
     _TOKEN = re.compile(rf"(?:(?<![{_LETTERS}])-)?[{_LETTERS}]+(?:['’][{_LETTERS}]+)*")
-    _dictionaries = None
 
 
 use(language.profile("de"))
@@ -135,15 +134,16 @@ def dictionaries_available():
 
 
 def _dicts():
-    global _dictionaries
-    if _dictionaries is None:
-        try:
-            from spellchecker import SpellChecker
-        except ImportError as error:
-            raise SpeechError("pyspellchecker is required to find target-language words inside English text: "
-                              "pip install pyspellchecker") from error
-        _dictionaries = (SpellChecker(language=_SPELL) if _SPELL else None, SpellChecker(language="en"))
-    return _dictionaries
+    """The target language's spelling dictionary (None for a language without one) and the English one."""
+    for lang in (_SPELL, "en"):
+        if lang and lang not in _spellers:
+            try:
+                from spellchecker import SpellChecker
+            except ImportError as error:
+                raise SpeechError("pyspellchecker is required to find target-language words inside English text: "
+                                  "pip install pyspellchecker") from error
+            _spellers[lang] = SpellChecker(language=lang)
+    return _spellers.get(_SPELL) if _SPELL else None, _spellers["en"]
 
 
 def _classify(token, sentence_start, base, notes=False):

@@ -1,7 +1,7 @@
 {
   "name": "language-distiller",
   "displayName": "Language Distiller",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Distill language-course material (course books, lecture slides, handouts, notes) into compact study sheets (vocabulary, grammar, useful phrases and a catchy story that reuses the lesson), written in your own words, then into an offline phone study app with neural voices that repeat on tap, an examples-only listening mode that keeps playing with the screen off, one-tap spaced-repetition flashcards, five lesson games and MP3 listening episodes. German is the reference language; others get a language profile.",
   "author": {
     "name": "omaratif1995",

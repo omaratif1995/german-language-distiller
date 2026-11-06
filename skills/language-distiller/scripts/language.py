@@ -145,7 +145,7 @@ def article_title(prof):
 # German app text → English. Placeholders: {name} the language («Spanish»), {vocabulary} its vocabulary section.
 UI_EN = {
     # Lernen and the app frame
-    "Lernen": "Learn", "Üben": "Practise", "Spielen": "Play", "Vorherige Lektion": "Previous lesson",
+    "Lernen": "Learn", "Üben": "Practise", "Spielen": "Play", "Hören": "Listen", "Vorherige Lektion": "Previous lesson",
     "Lektion wählen": "Choose a lesson", "Nächste Lektion": "Next lesson", "Suchen…": "Search…", "Suchen": "Search",
     "Audio, Üben und Spielen brauchen einen Browser mit JavaScript.": "Audio, practice and games need a browser with JavaScript.",
     "Karte": "card", "Karten": "cards", "gefunden": "found", "Lektionen": "Lessons",
@@ -219,7 +219,17 @@ UI_EN = {
     "Erklärung": "Explanation", "Absatz": "Paragraph", "Satz": "Sentence", "Wiederholen": "Repeat", "je": "each",
     "Jeder Satz": "Each sentence", "Am Ende": "At the end", "🔊-Taste": "🔊 button", "Noch einmal": "Again",
     "Noch einmal (am Satzanfang: zurück)": "Again (at the start of a sentence: back)", "Nächster Satz": "Next sentence",
-    "Beispiele": "Examples",
+    "Beispiele": "Examples", "Wörter": "Words", "▶ Wörter": "▶ Words", "Sprache": "Language",
+    "Nur Deutsch": "Only {name}", "Deutsch + Englisch": "{name} + English",
+    # Hören
+    "Alles": "Everything", "Wörter, Grammatik, Redemittel und Geschichte": "Words, grammar, phrases and the story",
+    "Wörter und Redemittel": "Words and phrases", "Alle Beispielsätze": "Every example sentence",
+    "Jede Erklärung, dann ihre Beispiele": "Every explanation, then its examples", "Geschichten": "Stories",
+    "Die Geschichte, Folge für Folge": "The story, episode by episode", "Was möchtest du hören?": "What would you like to hear?",
+    "Aus welchen Lektionen?": "Which lessons?", "So klingt es": "How it sounds", "Nur": "Only", "Ab": "From",
+    "Alle Lektionen": "All lessons",
+    "Es läuft weiter, wenn der Bildschirm aus ist: Pause, zurück und weiter auch auf dem Sperrbildschirm und am Kopfhörer.":
+        "It keeps playing with the screen off: pause, back and next also on the lock screen and your headphones.",
 }
 
 
@@ -239,7 +249,7 @@ def ui_table(prof):
         table[key] = value
     title = article_title(prof)
     table.update({"Wortschatz": sections["vocabulary"], "Grammatik": sections["grammar"], "Redemittel": sections["redemittel"],
-                  "Geschichte": sections["story"], "▶ Geschichte": "▶ " + sections["story"],
+                  "Geschichte": sections["story"], "▶ Geschichte": "▶ " + sections["story"], "▶ Grammatik": "▶ " + sections["grammar"],
                   "Der · Die · Das": title, "⚡ Der · Die · Das": "⚡ " + title})
     return {key: value for key, value in table.items() if key != value}
 

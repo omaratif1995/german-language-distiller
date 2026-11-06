@@ -310,6 +310,36 @@ class CourseAppTests(unittest.TestCase):
         self.assertFalse(ok("Das kenne ich gut: Ich verliere ständig meine Schlüssel."))      # two sentences in one
         self.assertFalse(ok("Am Sonntag besuchen wir mit den Kindern die Großeltern auf ihrem Bauernhof."))   # over nine words
 
+    @NEEDS_DICTS
+    def test_hoeren_plays_the_course_with_or_without_english(self):
+        out = self.root / "app_hear.html"
+        build_course_app.build(course_audio.load_course(self.course_path), out, audio=True, placeholder_audio=True)
+        page = out.read_text(encoding="utf-8")
+        self.assertIn('id="tab-h"', page)                                  # a fourth tab, Hören
+        self.assertIn('<section id="listen"', page)
+        for name in ("WRD", "GRM", "UT"):                                  # words, grammar, and each unit's spoken name
+            self.assertIn(f", {name}=", page)
+        words = json.loads(re.search(r"WRD=(\{.*?\}), GRM=", page, re.S).group(1))
+        self.assertEqual([step[2] for step in words["U1"]], ["U1-v1", "U1-e1"])
+        self.assertTrue(all(len(step) == 5 for step in words["U1"]))       # each with its English
+        config = json.loads(re.search(r"CFG=(\{.*?\}), G=", page, re.S).group(1))
+        self.assertTrue(config["en"])
+        for mode in ('data-m="words"', 'data-m="gram"', 'id="lp-en"'):    # the lesson's panel offers them too
+            self.assertIn(mode, page)
+        plain = self.root / "app_hear_german_only.html"
+        build_course_app.build(course_audio.load_course(self.course_path), plain, audio=True, placeholder_audio=True, english=False)
+        page = plain.read_text(encoding="utf-8")
+        words = json.loads(re.search(r"WRD=(\{.*?\}), GRM=", page, re.S).group(1))
+        self.assertTrue(all(len(step) == 4 for step in words["U1"]))
+        self.assertNotIn('"en":true', page)
+
+    def test_an_app_without_audio_has_nothing_to_hear(self):
+        out = self.root / "app_silent.html"
+        build_course_app.build(course_audio.load_course(self.course_path), out, audio=False)
+        page = out.read_text(encoding="utf-8")
+        self.assertNotIn('id="tab-h"', page)
+        self.assertNotIn('<section id="listen"', page)
+
     def test_books_in_one_course_are_grouped(self):
         data = json.loads(self.course_path.read_text(encoding="utf-8"))
         for unit, book in zip(data["units"], ("Buch 1", "Buch 2")):
@@ -353,7 +383,7 @@ class CourseAppTests(unittest.TestCase):
         self.assertLess(page.index("</head>"), page.index('<section class="unit"'))
         bar = page[page.index("</nav>"):page.index('<section class="unit"')]       # the bar shows the tab and unit at once
         self.assertIn("localStorage.getItem('test-kurs:ui')", bar)
-        self.assertIn("d.body.classList.add(t==='p'?'mode-practice':'mode-games')", bar)
+        self.assertIn("d.body.classList.add(t==='p'?'mode-practice':t==='g'?'mode-games':'mode-listen')", bar)
 
     def test_unknown_course_key_is_refused(self):
         data = json.loads(self.course_path.read_text(encoding="utf-8"))

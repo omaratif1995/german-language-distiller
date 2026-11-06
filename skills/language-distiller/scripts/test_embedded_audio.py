@@ -80,6 +80,26 @@ class EmbeddedAudioTests(unittest.TestCase):
         self.assertEqual([step[2] for step in story_steps], ["story", "story-s1", "story-s2"])
         self.assertEqual(len(embed_audio.examples_order("", lesson, plan)), 4)
 
+    @unittest.skipUnless(speech.dictionaries_available(), "pip install pyspellchecker")
+    def test_words_and_examples_carry_their_english(self):
+        clips, plan = embed_audio.lesson_plan(LESSON, "test-voice")
+        english = plan["english"]
+        self.assertEqual(clips[english["v01-head"]].parts, (("en", "book"),))           # a word's meaning
+        self.assertEqual(clips[english["e01-head"]].parts, (("en", "I like that!"),))   # a phrase's meaning
+        self.assertEqual(clips[english["g01-ex-1"]].parts, (("en", "We read."),))       # an example's translation
+        words = embed_audio.words_order("", LESSON, plan)
+        self.assertEqual([step[2] for step in words], ["v01", "e01"])
+        self.assertEqual([step[4] for step in words], [english["v01-head"], english["e01-head"]])
+        self.assertTrue(all(step[3] == 1 for step in words))                           # repeated like any German sentence
+        grammar = embed_audio.grammar_order("", LESSON, plan)
+        self.assertEqual([step[2] for step in grammar][-2:], ["g01-x0", "g01-x1"])      # the explanation, then its examples
+        self.assertEqual([len(step) for step in grammar[:-2]], [4] * (len(grammar) - 2))  # no English after an explanation
+        self.assertEqual(grammar[-1][4], english["g01-ex-1"])
+        whole = embed_audio.listening_order("", LESSON, plan)
+        variant = [step for step in whole if step[0] == plan["controls"]["e01-variant-0"]][0]
+        self.assertEqual(len(variant), 4)                                              # a variant has no English of its own
+        self.assertIn(english["v01-ex-0"], [step[4] for step in whole if len(step) > 4])
+
     def test_speakable_removes_visual_notation(self):
         self.assertEqual(embed_audio.speakable("Subjekt + werden + … + Partizip II"),
                          "Subjekt, werden, Partizip zwei")

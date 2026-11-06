@@ -28,8 +28,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from embed_audio import (AUDIO_CSS, LISTEN_HTML, LISTEN_JS, AudioError, examples_order, explanation_sentences,  # noqa: E402
-                         inject_example_buttons, inject_story_audio, listening_order, number_examples, play_button,
-                         require, sentence_times, story_order, transform_card)
+                         grammar_order, inject_example_buttons, inject_story_audio, listening_order, number_examples,
+                         play_button, require, sentence_times, story_order, transform_card, words_order)
 from course_audio import build_course_plan, exact_term, ffmpeg_exe, load_course  # noqa: E402
 import language  # noqa: E402
 import speech  # noqa: E402
@@ -306,10 +306,36 @@ APP_CSS = r"""
   details.say-en summary{cursor:pointer;color:var(--muted);font-size:13.5px;padding:2px 0}
   details.say-en .say{margin-bottom:2px}
   details.say-en .say p{font-size:14.5px}
-  .mode-practice .lernen,.mode-games .lernen{display:none}
-  #practice,#games{display:none}
-  .mode-practice #practice,.mode-games #games{display:block}
-  .mode-practice .lern-only,.mode-games .search-only{display:none !important}
+  .mode-practice .lernen,.mode-games .lernen,.mode-listen .lernen{display:none}
+  #practice,#games,#listen{display:none}
+  .mode-practice #practice,.mode-games #games,.mode-listen #listen{display:block}
+  .mode-practice .lern-only,.mode-games .search-only,.mode-listen .search-only{display:none !important}
+  #listen{padding-bottom:86px}
+  .h-now{margin:2px 0 14px;padding:14px 16px 15px;border-radius:16px;background:linear-gradient(135deg,#134e4a,#0f766e);color:#ecfdf5;
+         box-shadow:0 10px 26px rgba(0,0,0,.3)}
+  .h-where{font-size:11.5px;letter-spacing:1.2px;text-transform:uppercase;opacity:.85;margin-bottom:6px}
+  .h-de{font-size:21px;font-weight:700;line-height:1.4;overflow-wrap:anywhere}
+  .h-en{font-size:15px;opacity:.88;margin-top:6px;font-style:italic;line-height:1.45}
+  .h-go{display:block;width:100%;margin:0 0 6px;font:inherit;font-size:15px;font-weight:700;min-height:48px;border-radius:14px;cursor:pointer;
+        color:#064e3b;background:#ecfdf5;border:0}
+  .h-lab{font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin:18px 0 8px}
+  .h-modes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .h-mode{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:12px 14px 13px;min-height:96px;
+          border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+  .h-mode:first-child{grid-column:1 / -1;min-height:0}
+  .h-ic{font-size:22px;line-height:1.15;margin-bottom:4px}
+  .h-mode b{font-size:16.5px}
+  .h-mode small{font-size:12.5px;color:var(--muted);line-height:1.35}
+  .h-mode[aria-pressed="true"]{background:#0f766e;border-color:#6ee7b7;color:#ecfdf5}
+  .h-mode[aria-pressed="true"] small{color:#d1fae5}
+  .h-mode[aria-pressed="true"]::after{content:"⏹";position:absolute;top:11px;right:13px;font-size:15px}
+  .h-chips{display:flex;flex-wrap:wrap;gap:6px}
+  .h-chips button{font:inherit;font-size:14px;min-height:38px;padding:5px 12px;border-radius:999px;cursor:pointer;color:var(--ink);
+                  background:var(--card);border:1px solid var(--line)}
+  .h-chips button[aria-pressed="true"]{background:var(--accent);color:#1a1030;border-color:var(--accent);font-weight:700}
+  .h-row{display:flex;align-items:center;gap:10px;margin:8px 0}
+  .h-row>span{flex:0 0 88px;font-size:13px;color:var(--muted)}
+  .h-note{font-size:13px;color:var(--muted);line-height:1.5;margin:18px 0 0}
   .mode-practice .now{bottom:calc(150px + env(safe-area-inset-bottom))}
   .tr-top{display:flex;align-items:center;gap:10px;margin:2px 0 12px}
   .tr-bar{flex:1;height:8px;border-radius:99px;background:var(--card);border:1px solid var(--line);overflow:hidden}
@@ -473,8 +499,8 @@ APP_JS = r"""
 (function(){
   'use strict';
   var d=document, root=d.documentElement; root.classList.add('js');
-  var AU={}, IDX=__INDEX__, SEQ=__SEQUENCES__, EXS=__EXAMPLES__, STO=__STORIES__, CARDS=__CARDS__, ORDER=__ORDER__, CFG=__CONFIG__, G=__GAME__;
-  var K=CFG.key, ARTS=CFG.arts||[], COL=CFG.col||{};                 /* the language's articles and their colours */
+  var AU={}, IDX=__INDEX__, SEQ=__SEQUENCES__, EXS=__EXAMPLES__, WRD=__WORDS__, GRM=__GRAMMAR__, STO=__STORIES__, UT=__TITLES__, CARDS=__CARDS__, ORDER=__ORDER__, CFG=__CONFIG__, G=__GAME__;
+  var K=CFG.key, ARTS=CFG.arts||[], COL=CFG.col||{}, ENG=!!CFG.en;   /* the language's articles and their colours; English clips in the app */
   function load(k,dflt){try{var v=localStorage.getItem(K+':'+k);return v?JSON.parse(v):dflt;}catch(e){return dflt;}}
   function save(k,v){try{localStorage.setItem(K+':'+k,JSON.stringify(v));}catch(e){}}
   var ui=load('ui',{}), state=load('srs',{}), meta=load('meta',{day:0,fresh:0,extra:0,streak:0,last:-9,done:0,good:0});
@@ -495,9 +521,10 @@ __LISTEN__
   var units=[].slice.call(d.querySelectorAll('section.unit')), sel=d.getElementById('pick'), q=d.getElementById('q'), hits=d.getElementById('hits');
   function show(id,scroll){ if(!units.some(function(u){return u.id===id;})) id=units[0].id;
     units.forEach(function(u){u.classList.toggle('on',u.id===id);}); sel.value=id; ui.unit=id; save('ui',ui); if(scroll) window.scrollTo(0,0); }
-  function stepUnit(n){ var i=units.findIndex(function(u){return u.id===sel.value;}); i=Math.max(0,Math.min(units.length-1,i+n)); stopAll(); show(units[i].id,true); unitChanged(); }
-  function unitChanged(){ if(d.body.classList.contains('mode-games')) Games.open(); }
-  sel.addEventListener('change',function(){stopAll(); show(sel.value,true); unitChanged();});
+  function onCourse(){ return !!((R&&R.o.course)||(held&&held.o.course)); }   /* a course session goes on while the learner looks around */
+  function stepUnit(n){ var i=units.findIndex(function(u){return u.id===sel.value;}); i=Math.max(0,Math.min(units.length-1,i+n)); if(!onCourse()) stopAll(); show(units[i].id,true); unitChanged(); }
+  function unitChanged(){ if(d.body.classList.contains('mode-games')) Games.open(); listening(); }
+  sel.addEventListener('change',function(){ if(!onCourse()) stopAll(); show(sel.value,true); unitChanged();});
   d.getElementById('prev').addEventListener('click',function(){stepUnit(-1);});
   d.getElementById('next').addEventListener('click',function(){stepUnit(1);});
   function norm(s){return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ß/g,'ss');}
@@ -518,11 +545,68 @@ __LISTEN__
     hits.textContent=n+(n===1?' Karte':' Karten')+' gefunden'; }
 
   /* ---------------- tabs ---------------- */
-  var tabs={l:d.getElementById('tab-l'),p:d.getElementById('tab-p'),g:d.getElementById('tab-g')};
-  function mode(m){ stopAll(); Games.stop(); d.body.classList.toggle('mode-practice',m==='p'); d.body.classList.toggle('mode-games',m==='g');
+  var tabs={l:d.getElementById('tab-l'),h:d.getElementById('tab-h'),p:d.getElementById('tab-p'),g:d.getElementById('tab-g')};
+  if(!tabs.h) delete tabs.h;                                         /* an app without audio has nothing to hear */
+  function mode(m){ if(!tabs[m]) m='l';
+    var away=/mode-(practice|games)/.test(d.body.className), cur=playing();   /* Lernen and Hören share a session; Üben and Spielen make their own sounds */
+    if(m==='p'||m==='g'||away) stopAll(); Games.stop();
+    d.body.classList.toggle('mode-practice',m==='p'); d.body.classList.toggle('mode-games',m==='g'); d.body.classList.toggle('mode-listen',m==='h');
     Object.keys(tabs).forEach(function(k){ tabs[k].setAttribute('aria-pressed',String(k===m)); });
-    ui.tab=m; save('ui',ui); if(m==='p') start(); if(m==='g') Games.open(); window.scrollTo(0,0); }
+    ui.tab=m; save('ui',ui); if(m==='p') start(); if(m==='g') Games.open(); if(m==='h') hearPage(); window.scrollTo(0,0);
+    if(m==='l'&&cur&&playing()===cur){ if(cur.o.unit!==sel.value) show(cur.o.unit,false); if(cur.cur>=0) follow(spot(cur.items[cur.cur]));   /* read along where the course is */
+      var lit=d.querySelector('.sn.lit'); if(lit) lit.scrollIntoView({block:'center'}); } }
   Object.keys(tabs).forEach(function(k){ tabs[k].addEventListener('click',function(){ mode(k); }); });
+
+  /* ---------------- Hören: the whole course, a book, or the lessons from one on, unit after unit ---------------- */
+  var HMODES=[['all','🎧','Alles','Wörter, Grammatik, Redemittel und Geschichte'],['words','🔤','Wörter','Wörter und Redemittel'],
+              ['ex','💬','Beispiele','Alle Beispielsätze'],['gram','🧠','Grammatik','Jede Erklärung, dann ihre Beispiele'],
+              ['story','📖','Geschichten','Die Geschichte, Folge für Folge']];
+  var HLABEL={all:'Alles',words:'Wörter',ex:'Beispiele',gram:'Grammatik',story:'Geschichten'};
+  var hNow=d.getElementById('h-now'), hModes=d.getElementById('h-modes'), hGo=d.getElementById('h-go');
+  function unitSteps(u,m){ var st=stepsOf(m)[u]||[]; return !st.length?[]:m==='all'?st:[[UT[u],0.5,null,0]].concat(st); }   /* each unit opens with its name */
+  function playable(list,m,k){ for(;k<list.length;k++) if(unitSteps(list[k],m).length) return k; return -1; }
+  function scopeOf(s){ var at=Math.max(0,ORDER.indexOf(sel.value)), g=(CFG.groups||[]).filter(function(x){ return x[0]===s; })[0];
+    return s==='one'?[ORDER[at]]:s==='from'?ORDER.slice(at):g?g[1].slice():ORDER.slice(); }
+  function courseOpts(m,list,k,at){ var u=list[k];
+    return {each:A.each,laps:1,follow:true,label:HLABEL[m],unit:u,mode:m,at:at,en:!!A.en,where:CFG.labels[u]||u,course:{list:list},
+      then:function(){ var j=playable(list,m,k+1); if(j<0&&A.loop) j=playable(list,m,0);      /* ⟳ Endlos: the whole choice again */
+        return j<0?null:[unitSteps(list[j],m),courseOpts(m,list,j,0)]; }}; }
+  function courseRun(m,list,k,at){ k=playable(list,m,k); if(k>=0) run(unitSteps(list[k],m),courseOpts(m,list,k,at||0)); }
+  function playing(){ return R&&R.o.course?R:held&&held.o.course?held:null; }
+  function hearPage(){ if(!hModes) return; var cur=playing(), name=CFG.labels[sel.value]||sel.value;
+    hModes.innerHTML='';
+    HMODES.forEach(function(x){ if(!ORDER.some(function(v){ return unitSteps(v,x[0]).length; })) return;
+      var b=d.createElement('button'); b.type='button'; b.className='h-mode'; b.setAttribute('data-m',x[0]); b.setAttribute('aria-pressed',String(!!cur&&cur.o.mode===x[0]));
+      b.innerHTML='<span class="h-ic" aria-hidden="true">'+x[1]+'</span><b>'+x[2]+'</b><small>'+x[3]+'</small>'; hModes.appendChild(b); });
+    var scopes=[['one','Nur'+' '+name],['from','Ab'+' '+name]].concat((CFG.groups||[]).map(function(g){ return [g[0],g[0]]; }),[['all','Alle Lektionen']]);
+    if(!scopes.some(function(s){ return s[0]===A.scope; })) A.scope='all';
+    chipRow('h-scope',scopes,A.scope,function(v){A.scope=v;});
+    chipRow('h-lang',EN_CHIPS,A.en?1:0,function(v){A.en=v;}); d.getElementById('h-lang-row').hidden=!ENG;
+    chipRow('h-each',[[1,'1×'],[2,'2×'],[3,'3×'],[5,'5×']],A.each,function(v){A.each=v;});
+    chipRow('h-loop',[[0,'Einmal'],[1,'⟳ Endlos']],A.loop,function(v){A.loop=v;});
+    var at=AT['*'], st=at&&at.list&&at.list.indexOf(at.u)>=0?unitSteps(at.u,at.m):[];
+    hGo.hidden=!!cur||!(st.length&&st.length===at.n&&st[0][0]===at.c&&at.i<st.length);    /* a stopped course session goes on where it stopped */
+    if(!hGo.hidden) hGo.textContent='▶ Weiter: '+HLABEL[at.m]+' · '+(CFG.labels[at.u]||at.u)+' · '+(at.i+1)+' / '+at.n;
+    heard(cur); }
+  function listening(){ if(d.body.classList.contains('mode-listen')) hearPage(); }
+  function textOf(el,skip){ var c=el.cloneNode(true); [].forEach.call(c.querySelectorAll('button'+(skip?','+skip:'')),function(x){ x.remove(); });
+    return c.textContent.replace(/\s+/g,' ').trim(); }
+  /* what is being heard, written big: the sentence or word, and its English when the learner listens with English */
+  function heard(r){ if(!hNow) return; if(!r||!r.o.course){ hNow.hidden=true; return; }
+    var it=r.items[r.cur>=0?r.cur:r.from]||[], el=typeof it[2]==='string'?d.getElementById(it[2]):null, de='', en='', part, e=d.getElementById('h-en');
+    if(!el){ part=d.querySelector('section.unit[id="'+r.o.unit+'"] h1'); de=part?part.textContent:''; }
+    else if(el.classList.contains('ex')){ de=textOf(el,'.tr'); part=el.querySelector('.tr'); en=part?part.textContent.replace(/^\s*—\s*/,''):''; }
+    else if(el.classList.contains('voc')){ part=el.querySelector('.top .de'); de=part?textOf(part):''; part=el.querySelector('.top .en'); en=part?part.textContent:''; }
+    else if(el.classList.contains('phrase')){ part=el.querySelector('.head'); de=part?textOf(part):''; part=el.querySelector('.meaning'); en=part?part.textContent:''; }
+    else if(el.classList.contains('rule')||el.classList.contains('story')){ part=el.querySelector('h3'); de=part?textOf(part):''; }
+    else de=textOf(el);
+    d.getElementById('h-where').textContent=r.o.label+' · '+r.o.where; d.getElementById('h-de').textContent=de;
+    e.textContent=en; e.hidden=!(r.o.en&&en); hNow.hidden=false; }
+  if(hModes){
+    hModes.addEventListener('click',function(e){ var b=e.target.closest('[data-m]'), cur=playing(); if(!b) return; var m=b.getAttribute('data-m');
+      if(cur&&cur===R&&cur.o.mode===m){ endRun(); return; }                    /* the one playing: stop it */
+      courseRun(m,scopeOf(A.scope),0,0); });
+    hGo.addEventListener('click',function(){ var at=AT['*']; if(at&&at.list) courseRun(at.m,at.list,at.list.indexOf(at.u),at.i); }); }
 
   /* ---------------- Üben: spaced repetition with rounds ---------------- */
   var DAYS=[0,1,3,7,14,30,60], KIND={w:'Wortschatz',g:'Grammatik',r:'Redemittel'};
@@ -955,9 +1039,27 @@ GAMES = """
 </section>
 """
 
+HEAR_TAB = '<button type="button" id="tab-h" aria-pressed="false">Hören</button>'
+# Hören: the course to listen to, unit after unit, also with the screen off. The tiles are drawn by the app (HMODES).
+HEAR = """
+<section id="listen" aria-label="Hören">
+<div class="h-now" id="h-now" hidden aria-live="polite"><div class="h-where" id="h-where"></div><div class="h-de" id="h-de" lang="__LANG__"></div><div class="h-en" id="h-en" lang="en" hidden></div></div>
+<button type="button" class="h-go" id="h-go" hidden></button>
+<div class="h-lab">Was möchtest du hören?</div>
+<div class="h-modes" id="h-modes"></div>
+<div class="h-lab">Aus welchen Lektionen?</div>
+<div class="h-chips" id="h-scope"></div>
+<div class="h-lab">So klingt es</div>
+<div class="h-row" id="h-lang-row"><span>Sprache</span><div class="h-chips" id="h-lang"></div></div>
+<div class="h-row"><span>Jeder Satz</span><div class="h-chips" id="h-each"></div></div>
+<div class="h-row"><span>Am Ende</span><div class="h-chips" id="h-loop"></div></div>
+<p class="h-note">Es läuft weiter, wenn der Bildschirm aus ist: Pause, zurück und weiter auch auf dem Sperrbildschirm und am Kopfhörer.</p>
+</section>
+"""
+
 
 FRAME = """<nav class="bar" aria-label="Navigation">
-<div class="tabs"><button type="button" id="tab-l" aria-pressed="true">Lernen</button><button type="button" id="tab-p" aria-pressed="false">Üben</button><button type="button" id="tab-g" aria-pressed="false">Spielen</button></div>
+<div class="tabs"><button type="button" id="tab-l" aria-pressed="true">Lernen</button>__HEAR_TAB__<button type="button" id="tab-p" aria-pressed="false">Üben</button><button type="button" id="tab-g" aria-pressed="false">Spielen</button></div>
 <button class="nav lern-only" id="prev" type="button" aria-label="Vorherige Lektion">‹</button>
 <select class="lern-only" id="pick" aria-label="Lektion wählen">__OPTIONS__</select>
 <button class="nav lern-only" id="next" type="button" aria-label="Nächste Lektion">›</button>
@@ -971,14 +1073,14 @@ FRAME = """<nav class="bar" aria-label="Navigation">
 # so a phone never lays out the whole course (that took longer than the reading itself). The app script takes over.
 EARLY_JS = """<script>(function(){ var r=document.documentElement, u={}; r.classList.add('js');
   try{ u=JSON.parse(localStorage.getItem('__KEY__:ui'))||{}; }catch(e){}
-  if(u.tab==='p'||u.tab==='g') return; var s=document.createElement('style'); s.id='early-unit';
+  if(u.tab==='p'||u.tab==='g'||u.tab==='h') return; var s=document.createElement('style'); s.id='early-unit';
   s.textContent='section.unit[id="'+(typeof u.unit==='string'&&/^[A-Za-z0-9_-]+$/.test(u.unit)?u.unit:'__FIRST__')+'"]{display:block}';
   document.head.appendChild(s); })();</script>"""
 # Right after the bar: it shows the tab and unit the learner was on from the first paint, not only once the app runs.
 EARLY_BAR = """<script>(function(){ var u={}, d=document; try{ u=JSON.parse(localStorage.getItem('__KEY__:ui'))||{}; }catch(e){}
-  var t=u.tab==='p'||u.tab==='g'?u.tab:'l', id=typeof u.unit==='string'&&/^[A-Za-z0-9_-]+$/.test(u.unit)?u.unit:'', p=d.getElementById('pick');
-  ['l','p','g'].forEach(function(k){ d.getElementById('tab-'+k).setAttribute('aria-pressed',String(k===t)); });
-  if(t!=='l') d.body.classList.add(t==='p'?'mode-practice':'mode-games');
+  var t=u.tab==='p'||u.tab==='g'||u.tab==='h'&&d.getElementById('tab-h')?u.tab:'l', id=typeof u.unit==='string'&&/^[A-Za-z0-9_-]+$/.test(u.unit)?u.unit:'', p=d.getElementById('pick');
+  ['l','h','p','g'].forEach(function(k){ var b=d.getElementById('tab-'+k); if(b) b.setAttribute('aria-pressed',String(k===t)); });
+  if(t!=='l') d.body.classList.add(t==='p'?'mode-practice':t==='g'?'mode-games':'mode-listen');
   if(id&&p.querySelector('option[value="'+id+'"]')) p.value=id; })();</script>"""
 
 
@@ -996,13 +1098,16 @@ def compact(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
 
 
-def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", placeholder_audio=False):
+def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", placeholder_audio=False,
+          english=True, english_bitrate="24k"):
+    """english: also embed every word's meaning and every example's translation in English (about a quarter more
+    audio), so the learner can listen with English; they come after all the target-language audio in the file."""
     prof = course.get("profile") or language.profile("de")
     ui = language.ui_table(prof)
     plan = build_course_plan(course)[1] if audio else None
     css, sections, options, cards = None, [], [], []
-    sequences, examples, stories, games = {}, {}, {}, {}
-    used_german, used_explain, first_unit = set(), set(), {}
+    sequences, examples, stories, games, words, grammar, titles = {}, {}, {}, {}, {}, {}, {}
+    used_german, used_explain, first_unit, first_english = set(), set(), {}, {}
     for unit in course["units"]:
         uid, label = unit["id"], unit["label"]
         page = unit["sheet"].read_text(encoding="utf-8")
@@ -1016,7 +1121,16 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
             page = add_audio_buttons(page, lesson, unit_plan, used_german, prof, ui)
             sequences[uid] = listening_order(f"{uid}-", lesson, unit_plan)
             examples[uid] = examples_order(f"{uid}-", lesson, unit_plan)
+            words[uid] = words_order(f"{uid}-", lesson, unit_plan)
+            grammar[uid] = grammar_order(f"{uid}-", lesson, unit_plan)
             stories[uid] = story_order(f"{uid}-", unit_plan)
+            titles[uid] = unit_plan["title"]
+            for steps in (sequences[uid], examples[uid], words[uid], grammar[uid]):
+                for step in steps:
+                    if len(step) > 4 and not english:
+                        del step[4:]                          # no English in this app: the steps do not name it
+                    elif len(step) > 4:
+                        first_english.setdefault(step[4], len(sections))
             for chain in list(unit_plan["explain"].values()) + list(unit_plan.get("explain_en", {}).values()):
                 used_explain.update(chain)
             used_german.update([unit_plan["title"]] + list(unit_plan["sections"].values()))
@@ -1052,9 +1166,11 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
         sections.append(f'<section class="unit" id="{uid}">{body}</section>')
 
     payloads = {}
+    used_english = set(first_english) - used_german - used_explain
     if audio and not placeholder_audio:
         ff = ffmpeg_exe()
-        jobs = [(cid, bitrate) for cid in sorted(used_german)] + [(cid, explain_bitrate) for cid in sorted(used_explain - used_german)]
+        jobs = ([(cid, bitrate) for cid in sorted(used_german)] + [(cid, explain_bitrate) for cid in sorted(used_explain - used_german)]
+                + [(cid, english_bitrate) for cid in sorted(used_english)])
         with ThreadPoolExecutor(max_workers=6) as pool:
             for cid, data in zip([j[0] for j in jobs], pool.map(lambda j: compressed(course["cache"], j[0], j[1], ff), jobs)):
                 payloads[cid] = data
@@ -1072,18 +1188,26 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
               "arts": prof["articles"], "col": prof["article_colours"]}
     if groups:
         config["groups"] = groups
+    if audio and english and used_english:
+        config["en"] = True                           # the learner can listen with English
     if not language.spaced(prof):                     # Satzbau asks the browser for the words (Intl.Segmenter)
         config.update(spaces=False, small=prof["bingo"]["function_words"].split())
     rtl = study_pack.RTL_CSS + RTL_APP_CSS if prof.get("direction") == "rtl" else ""
+    # one block per unit, in course order; the English ones (1000 + unit) after all the target-language ones, so a
+    # unit's own sound is never kept waiting for English the learner may not want
+    where = {cid: first_unit[cid] if cid in first_unit else 1000 + first_english[cid] for cid in payloads}
     blocks = {}
     for cid, data in payloads.items():
-        blocks.setdefault(first_unit[cid], []).append(f"{cid}:{data}")
+        blocks.setdefault(where[cid], []).append(f"{cid}:{data}")
     audio_blocks = "".join(f'<script type="text/plain" id="au-{k}">{";".join(v)}</script>\n' for k, v in sorted(blocks.items()))
-    index = {cid: first_unit[cid] for cid in payloads}
+    index = where
     js = (language.localize(APP_JS.replace("__LISTEN__", LISTEN_JS), ui)
           .replace("__INDEX__", json.dumps(index, separators=(",", ":")))
           .replace("__SEQUENCES__", compact(sequences))
           .replace("__EXAMPLES__", compact(examples))
+          .replace("__WORDS__", compact(words))
+          .replace("__GRAMMAR__", compact(grammar))
+          .replace("__TITLES__", compact(titles))
           .replace("__STORIES__", compact(stories))
           .replace("__CARDS__", compact(cards))
           .replace("__ORDER__", json.dumps([u["id"] for u in course["units"]]))
@@ -1093,7 +1217,9 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
     subtitle = html.escape(course.get("subtitle", f"{len(course['units'])} {ui.get('Lektionen', 'Lektionen')} · "
                                                   f"{names['vocabulary']} · {names['grammar']} · {names['redemittel']}"))
     frame = (language.localize(FRAME, ui).replace("__OPTIONS__", options_html)
+             .replace("__HEAR_TAB__", language.localize(HEAR_TAB, ui) if audio else "")
              .replace("</nav>", "</nav>\n" + EARLY_BAR.replace("__KEY__", config["key"]), 1))
+    hear = language.localize(HEAR, ui).replace("__LANG__", prof["code"]) if audio else ""
     early = EARLY_JS.replace("__KEY__", config["key"]).replace("__FIRST__", course["units"][0]["id"])
     doc = f"""<!DOCTYPE html>
 <html lang="{prof['code']}"><head>
@@ -1109,6 +1235,7 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
 <div class="cover"><b>{html.escape(course['title'])}</b>{subtitle}</div>
 {''.join(sections)}
 </div>
+{hear}
 {language.localize(PRACTICE, ui)}
 {language.localize(GAMES, ui)}
 {language.localize(LISTEN_HTML, ui)}
@@ -1134,6 +1261,9 @@ def main(argv=None):
     parser.add_argument("--no-audio", action="store_true", help="Study, practice and games only, no embedded audio")
     parser.add_argument("--bitrate", default="32k", help="German clips (default 32k)")
     parser.add_argument("--explain-bitrate", default="24k", help="spoken grammar explanations (default 24k)")
+    parser.add_argument("--english-bitrate", default="24k", help="English meanings and translations (default 24k)")
+    parser.add_argument("--no-english", action="store_true",
+                        help="leave out the English meanings and translations (a smaller file, listening in the target language only)")
     parser.add_argument("--placeholder-audio", action="store_true", help=argparse.SUPPRESS)  # silent buttons, for tests/screenshots
     args = parser.parse_args(argv)
     try:
@@ -1141,7 +1271,8 @@ def main(argv=None):
         require(args.output.suffix.lower() == ".html", "output must be an .html file")
         course = load_course(args.course)
         result = build(course, args.output, audio=not args.no_audio, bitrate=args.bitrate,
-                       explain_bitrate=args.explain_bitrate, placeholder_audio=args.placeholder_audio)
+                       explain_bitrate=args.explain_bitrate, placeholder_audio=args.placeholder_audio,
+                       english=not args.no_english, english_bitrate=args.english_bitrate)
         print(f"WROTE: {args.output} ({result['bytes'] / 1e6:.1f} MB): {len(course['units'])} units, "
               f"{result['cards']} cards, {result['clips']} embedded clips")
         return 0
