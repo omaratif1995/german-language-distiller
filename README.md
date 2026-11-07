@@ -20,6 +20,8 @@ You give it a lesson you're studying: pages from a course book you own, your tea
    - **Spielen:** five quick games per lesson for days without motivation: **Hör-Bingo** (hear a sentence, find a word of your card in it), **Wortpaare** (match words and meanings against the clock), **Satzbau** (put the words in order), **Der · Die · Das** (60-second article sprint, for languages with articles) and **Was sagt man?** (pick the phrase that fits the situation). Every round has one clear right answer, and a mistake stays on screen until you have read it. Each game shows your progress and your 🔥 streak, and ends with **Fehler üben**: a quick round of just the ones you missed.
 3. **MP3 listening episodes**, one per lesson (15–30 minutes): the lesson, a pause to repeat, English, and the story at the end. An optional examples-only set repeats every example sentence for the commute.
 
+The app's sound is MP3, which every browser plays. For a file about a third smaller that also keeps the voice's high frequencies, build with `--audio-format opus` (Chrome, Firefox and Safari 18.4 or newer; the app tells a browser that cannot play it).
+
 ![The study app: lesson view, grammar with spoken explanation, flashcard, answer](docs/app-screens.png)
 
 *Screens from the included [sample course](examples/sample-course/), which uses original example content.*

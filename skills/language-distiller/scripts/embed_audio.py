@@ -573,7 +573,7 @@ LISTEN_JS = r"""
   /* one clip now (a card's word, a game's sentence); while the page is still loading its sound, it plays once that is
      there, unless something else was asked for in the meantime */
   var asked=0;
-  function sound(data){ player.loop=false; player.src='data:audio/mpeg;base64,'+data; tempo(); go(); }
+  function sound(data){ player.loop=false; player.src=(data.slice(0,4)==='T2dn'?'data:audio/ogg;base64,':'data:audio/mpeg;base64,')+data; tempo(); go(); }   /* T2dn: base64 of "Ogg", an Opus clip */
   function clip(id){ var data=need(id), mine=++asked; if(data){ sound(data); return true; }
     if(!id||d.readyState!=='loading') return false;
     whenAudio([id]).then(function(){ var later=need(id); if(mine===asked&&!R&&later) sound(later); }); return true; }

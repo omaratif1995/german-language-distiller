@@ -231,6 +231,8 @@ UI_EN = {
     "Aus welchen Lektionen?": "Which lessons?", "So klingt es": "How it sounds", "Nur": "Only", "Ab": "From",
     "Alle Lektionen": "All lessons", "Mehr Beispiele": "More examples", "Alltag": "Everyday life", "Schreiben": "Writing",
     "Prüfung": "Exam",
+    "Dieser Browser kann das Audioformat dieser App (Opus) nicht abspielen. Bitte Chrome oder Firefox benutzen, auf dem iPhone iOS 18.4 oder neuer, oder die MP3-Version der App öffnen.":
+        "This browser cannot play the audio format of this app (Opus). Please use Chrome or Firefox, on an iPhone with iOS 18.4 or newer, or open the MP3 version of the app.",
     "Es läuft weiter, wenn der Bildschirm aus ist: Pause, zurück und weiter auch auf dem Sperrbildschirm und am Kopfhörer.":
         "It keeps playing with the screen off: pause, back and next also on the lock screen and your headphones.",
 }

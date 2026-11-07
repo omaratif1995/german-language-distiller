@@ -3,6 +3,7 @@
 
     build_course_app.py --course course.json --output Course_App_v1.html              # with audio from the cache
     build_course_app.py --course course.json --output Course_App_v1.html --no-audio   # study, practice and games only
+    build_course_app.py --course course.json --output Course_App_v1.html --audio-format opus   # a third smaller sound
 
 Lernen: every reviewed sheet in course order, with its closing story. A 🔊 tap repeats a word or sentence (until
 tapped again, or 1×/3×), a tap on a story sentence repeats that sentence, and a tap on an underlined story word shows
@@ -275,15 +276,57 @@ def game_data(lesson, unit_plan=None):
               for rec in lesson[section] for index, item in enumerate(rec["examples"]) if puzzle_sentence(item["de"], prof)]}
 
 
-def compressed(cache, clip_id, bitrate, ff):
+# The format of the embedded clips. MP3 plays in every browser. Opus (an Ogg file) says the same in about two thirds of
+# the bytes and keeps the voice's high frequencies, which the MP3s at these rates cut off, but the browser must decode
+# it: Chrome and Firefox always, Safari from 18.4 (the app checks its browser when it opens, and says so).
+AUDIO_FORMATS = ("mp3", "opus")
+MP3_RATES = ("32k", "24k", "24k")          # the target language, the spoken explanations, the English
+OPUS_RATES = ("24k", "20k", "20k")
+# At these rates Opus's speech coder takes about 1-2 dB off 1-6 kHz and about 4 dB off 7-8 kHz (measured against the
+# source clips: the same at 16k and at 48k, gone at 64k). This lifts the same bands before encoding, so the decoded
+# voice is level with the source again. Change the filter only together with the profile name, which names the cache.
+OPUS_EQ = "equalizer=f=3500:t=o:w=3:g=1.5,equalizer=f=7500:t=q:w=2:g=3.5"
+OPUS_PROFILE = "eq1"
+_OPUS_ARGS = ["-c:a", "libopus", "-application", "audio", "-vbr", "on", "-map_metadata", "-1",
+              "-fflags", "+bitexact", "-flags:a", "+bitexact", "-f", "ogg"]
+
+
+def encoder_available(ff, name):
+    """Whether this ffmpeg can encode with `name` (the system ffmpeg of some distributions has no libopus)."""
+    listing = subprocess.run([ff, "-hide_banner", "-encoders"], capture_output=True, text=True, encoding="utf-8",
+                             errors="replace").stdout
+    return any(len(parts) > 1 and parts[0].startswith("A") and parts[1] == name
+               for parts in (line.split() for line in listing.splitlines()))
+
+
+def compressed(cache, clip_id, bitrate, ff, codec="mp3"):
+    """A clip of the cache as base64 in the app's format, mono; encoded once, then kept in <cache>/app."""
     src = cache / "clips" / f"{clip_id}.mp3"
-    dst = cache / "app" / bitrate / f"{clip_id}.mp3"
+    if codec == "opus":
+        dst = cache / "app" / f"opus-{bitrate}-{OPUS_PROFILE}" / f"{clip_id}.ogg"
+        args = ["-ac", "1", "-ar", "24000", "-af", OPUS_EQ, "-b:a", bitrate] + _OPUS_ARGS
+    else:
+        dst = cache / "app" / bitrate / f"{clip_id}.mp3"
+        args = ["-ac", "1", "-ar", "22050", "-c:a", "libmp3lame", "-b:a", bitrate, "-f", "mp3"]
     if not dst.exists():
         require(src.is_file(), f"missing clip {clip_id}: run `course_audio.py synth` first")
         dst.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-i", str(src), "-ac", "1", "-ar", "22050",
-                        "-c:a", "libmp3lame", "-b:a", bitrate, str(dst)], check=True)
+        part = dst.with_name(dst.name + ".part")                # a build stopped half way never leaves a clip that looks done
+        subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-i", str(src)] + args + [str(part)], check=True)
+        part.replace(dst)
     return base64.b64encode(dst.read_bytes()).decode("ascii")
+
+
+def opus_probe(ff):
+    """A fifth of a second of Opus, base64. The app decodes it when it opens, to tell a browser that cannot play the
+    format (the sound would stay silent) instead of failing without a word."""
+    run = subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+                          "sine=frequency=330:duration=0.2:sample_rate=24000", "-ac", "1", "-b:a", "16k"] + _OPUS_ARGS + ["-"],
+                         capture_output=True, check=True)
+    return base64.b64encode(run.stdout).decode("ascii")
+
+
+OPUS_NOTICE = "Dieser Browser kann das Audioformat dieser App (Opus) nicht abspielen. Bitte Chrome oder Firefox benutzen, auf dem iPhone iOS 18.4 oder neuer, oder die MP3-Version der App öffnen."
 
 
 # ---------------------------------------------------------------- page assets ---
@@ -333,6 +376,7 @@ APP_CSS = r"""
   details.say-en .say p{font-size:14.5px}
   details.more{margin:12px 0 2px;padding-top:8px;border-top:1px dashed var(--line)}
   details.more>summary{cursor:pointer;color:var(--accent);font-size:14.5px;font-weight:700;padding:4px 0 6px}
+  .codec-warn{margin:0 0 14px;padding:12px 14px;border-radius:12px;background:#7c2d12;color:#ffedd5;font-size:15px;line-height:1.45}
   .ex .use{display:inline-block;font-size:10.5px;font-weight:700;font-style:normal;letter-spacing:.6px;text-transform:uppercase;
            color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:0 7px;margin-right:6px;vertical-align:2px}
   .mode-practice .lernen,.mode-games .lernen,.mode-listen .lernen{display:none}
@@ -545,6 +589,12 @@ APP_JS = r"""
   function whenAudio(ids){ return new Promise(function(ok){ (function check(){
     if(ids.every(function(id){ var k=IDX[id], el; return k===undefined||AU[id]!==undefined||!!((el=d.getElementById('au-'+k))&&parsed(el)); })) ok();
     else setTimeout(check,120); })(); }); }
+  /* an Opus build: decode a tiny Opus clip once, and say so if this browser cannot (the sound would stay silent) */
+  var PROBE='__PROBE__';
+  if(PROBE) (function(){ var warn=d.getElementById('codec-warn'); function bad(){ if(warn) warn.hidden=false; }
+    try{ var C=window.OfflineAudioContext||window.webkitOfflineAudioContext, bin=atob(PROBE), raw=new Uint8Array(bin.length);
+      for(var i=0;i<bin.length;i++) raw[i]=bin.charCodeAt(i);
+      var p=new C(1,1,22050).decodeAudioData(raw.buffer,function(){},bad); if(p&&p.catch) p.catch(function(){}); }catch(e){ bad(); } })();
 __LISTEN__
   /* ---------------- Lernen: unit picker and search ---------------- */
   var units=[].slice.call(d.querySelectorAll('section.unit')), sel=d.getElementById('pick'), q=d.getElementById('q'), hits=d.getElementById('hits');
@@ -1132,10 +1182,16 @@ def compact(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
 
 
-def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", placeholder_audio=False,
-          english=True, english_bitrate="24k"):
+def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeholder_audio=False,
+          english=True, english_bitrate=None, audio_format="mp3"):
     """english: also embed every word's meaning and every example's translation in English (about a quarter more
-    audio), so the learner can listen with English; they come after all the target-language audio in the file."""
+    audio), so the learner can listen with English; they come after all the target-language audio in the file.
+    audio_format: "mp3" (plays everywhere) or "opus" (about a third smaller, needs a browser that decodes Opus);
+    the bitrates default to MP3_RATES or OPUS_RATES, by format."""
+    require(audio_format in AUDIO_FORMATS, f"the audio format is one of {', '.join(AUDIO_FORMATS)}")
+    bitrate, explain_bitrate, english_bitrate = (given or default for given, default in
+                                                 zip((bitrate, explain_bitrate, english_bitrate),
+                                                     OPUS_RATES if audio_format == "opus" else MP3_RATES))
     prof = course.get("profile") or language.profile("de")
     ui = language.ui_table(prof)
     plan = build_course_plan(course)[1] if audio else None
@@ -1207,12 +1263,18 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
         named |= {cid for chain in re.findall(r'data-(?:audio|chain)="([^"]*)"', "".join(sections)) for cid in chain.split()}
         unsent = sorted(named - used_german - used_explain - used_english)
         require(not unsent, f"played but not embedded ({len(unsent)}): {', '.join(unsent[:3])}{' …' if len(unsent) > 3 else ''}")
+    probe = ""
     if audio and not placeholder_audio:
         ff = ffmpeg_exe()
+        if audio_format == "opus":
+            require(encoder_available(ff, "libopus"),
+                    "this ffmpeg has no Opus encoder (libopus): use --audio-format mp3, or install a full ffmpeg build")
+            probe = opus_probe(ff)
         jobs = ([(cid, bitrate) for cid in sorted(used_german)] + [(cid, explain_bitrate) for cid in sorted(used_explain - used_german)]
                 + [(cid, english_bitrate) for cid in sorted(used_english)])
         with ThreadPoolExecutor(max_workers=6) as pool:
-            for cid, data in zip([j[0] for j in jobs], pool.map(lambda j: compressed(course["cache"], j[0], j[1], ff), jobs)):
+            for cid, data in zip([j[0] for j in jobs],
+                                 pool.map(lambda j: compressed(course["cache"], j[0], j[1], ff, audio_format), jobs)):
                 payloads[cid] = data
     groups = []                                       # books in one course: [label, unit ids], in course order
     for unit in course["units"]:
@@ -1252,7 +1314,10 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
           .replace("__CARDS__", compact(cards))
           .replace("__ORDER__", json.dumps([u["id"] for u in course["units"]]))
           .replace("__CONFIG__", compact(config))
+          .replace("__PROBE__", probe)
           .replace("__GAME__", compact(games)))
+    notice = (f'<div class="codec-warn" id="codec-warn" role="alert" hidden>{html.escape(ui.get(OPUS_NOTICE, OPUS_NOTICE))}</div>\n'
+              if probe else "")
     names = prof["sections"]
     subtitle = html.escape(course.get("subtitle", f"{len(course['units'])} {ui.get('Lektionen', 'Lektionen')} · "
                                                   f"{names['vocabulary']} · {names['grammar']} · {names['redemittel']}"))
@@ -1270,7 +1335,7 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
 {early}
 </head>
 <body><main class="wrap">
-{frame}
+{notice}{frame}
 <div class="lernen">
 <div class="cover"><b>{html.escape(course['title'])}</b>{subtitle}</div>
 {''.join(sections)}
@@ -1299,9 +1364,12 @@ def main(argv=None):
     parser.add_argument("--course", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--no-audio", action="store_true", help="Study, practice and games only, no embedded audio")
-    parser.add_argument("--bitrate", default="32k", help="German clips (default 32k)")
-    parser.add_argument("--explain-bitrate", default="24k", help="spoken grammar explanations (default 24k)")
-    parser.add_argument("--english-bitrate", default="24k", help="English meanings and translations (default 24k)")
+    parser.add_argument("--audio-format", choices=AUDIO_FORMATS, default="mp3",
+                        help="mp3 (default, plays in every browser) or opus (about a third smaller; Chrome, Firefox, "
+                             "Safari 18.4 or newer; the app says so when its browser cannot play it)")
+    parser.add_argument("--bitrate", default=None, help="target-language clips (default 32k for mp3, 24k for opus)")
+    parser.add_argument("--explain-bitrate", default=None, help="spoken grammar explanations (default 24k for mp3, 20k for opus)")
+    parser.add_argument("--english-bitrate", default=None, help="English meanings and translations (default 24k for mp3, 20k for opus)")
     parser.add_argument("--no-english", action="store_true",
                         help="leave out the English meanings and translations (a smaller file, listening in the target language only)")
     parser.add_argument("--placeholder-audio", action="store_true", help=argparse.SUPPRESS)  # silent buttons, for tests/screenshots
@@ -1312,7 +1380,7 @@ def main(argv=None):
         course = load_course(args.course)
         result = build(course, args.output, audio=not args.no_audio, bitrate=args.bitrate,
                        explain_bitrate=args.explain_bitrate, placeholder_audio=args.placeholder_audio,
-                       english=not args.no_english, english_bitrate=args.english_bitrate)
+                       english=not args.no_english, english_bitrate=args.english_bitrate, audio_format=args.audio_format)
         print(f"WROTE: {args.output} ({result['bytes'] / 1e6:.1f} MB): {len(course['units'])} units, "
               f"{result['cards']} cards, {result['clips']} embedded clips")
         return 0

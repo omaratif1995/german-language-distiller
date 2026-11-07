@@ -21,9 +21,10 @@
   $$('script[type="text/plain"][id^="au-"]').forEach(block => block.textContent.split(';').forEach(pair => {
     const at = pair.indexOf(':'); if (at > 0) clipOf[pair.slice(at + 1)] = pair.slice(0, at); }));
   let played = '';
+  const AUDIO_SRC = /^data:audio\/(?:mpeg|ogg);base64,/;    /* how the player plays a single clip: MP3, or Ogg in an Opus app */
   const play = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function () { this.muted = true;
-    if (this.src.startsWith('data:audio/mpeg;base64,')) played = clipOf[this.src.slice(23)] || ''; return play.call(this); };
+    const head = AUDIO_SRC.exec(this.src); if (head) played = clipOf[this.src.slice(head[0].length)] || ''; return play.call(this); };
   const problems = [], report = {};
   const label = v => { const a = v.aa ? v.aa.join('/') : v.a; return a ? a + ' ' + v.w : v.w; };
   const tapTwice = async el => { el.click(); await wait(60); el.click(); };

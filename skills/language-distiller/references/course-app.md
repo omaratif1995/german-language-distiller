@@ -125,7 +125,7 @@ Requirements: `pip install edge-tts pyspellchecker imageio-ffmpeg` (or a system 
 
 ## App
 
-`build_course_app.py --course course.json --output <Name>_Studienpaket_vN.html` (or `--no-audio`; `--no-english` leaves out the English meanings and translations, a quarter less audio). The build stops before writing if a 🔊 button or a listening order would play a clip that the app does not embed.
+`build_course_app.py --course course.json --output <Name>_Studienpaket_vN.html` (or `--no-audio`; `--no-english` leaves out the English meanings and translations, a quarter less audio; `--audio-format opus` makes the sound about a third smaller for browsers that decode Opus: see *Size and performance*). The build stops before writing if a 🔊 button or a listening order would play a clip that the app does not embed.
 
 The app has four tabs: **Lernen**, **Hören**, **Üben** and **Spielen** (without audio there is no Hören).
 
@@ -181,7 +181,9 @@ A tap is ignored for 0.3 s after a new question appears, so a tap meant for the 
 
 ## Size and performance
 
-German clips are embedded at 32 kbit/s, the explanations and the English meanings and translations at 24 kbit/s (`--english-bitrate`). A 16-unit course with spoken explanations is about 65 MB, or 85 MB with English; two books in one course about 130 MB, or 170 MB with English.
+German clips are embedded at 32 kbit/s, the explanations and the English meanings and translations at 24 kbit/s (`--english-bitrate`), as MP3, which every browser plays. A 16-unit course with spoken explanations is about 65 MB, or 85 MB with English; two books in one course about 130 MB, or 170 MB with English.
+
+**Opus (`--audio-format opus`)** embeds the same clips as Ogg Opus, 24 kbit/s for the target language and 20 kbit/s for the explanations and the English: the same two books with English are about 30% smaller (186 MB become 131 MB), and the page needs about a third less memory while it loads (on a desktop Chrome, 590 MB at its peak become 430 MB). Against the 48 kbit/s clips the voice service returns, the Opus clips are as close as the MP3s up to 4 kHz and closer from 4 to 8 kHz; the MP3s at these rates cut everything above about 8 kHz (the English ones above about 6), where Opus keeps the voice's top end. Opus takes about 1–2 dB off 1–6 kHz and 4 dB off 7–8 kHz at these rates (the same at 16 and at 48 kbit/s, gone at 64), so the build lifts those bands before encoding (`OPUS_EQ`); the decoded voice is then within 0.1 dB of the source's loudness and level to about 1 dB across the band. Clips keep their silences, so the player's pauses are the same. What it costs: the browser must decode Opus. Chrome (also on Android) and Firefox always do; Safari does from 18.4 (iOS 18.4), which is why MP3 stays the default. The app decodes a tiny Opus clip when it opens and shows a notice at the top if its browser cannot, instead of staying silent. Check a new build by ear (a few pairs, old against new, with the s, sch and z sounds), as the measures above are a guide, not a listening test.
 
 - **The first screen:** a small script in the page head hides every unit but the one the learner was on before the page reads them, and the bar shows the remembered tab and unit from the first paint. Without it the phone laid out the whole course while the page loaded, which took longer than reading it.
 - **The sound:** the clips sit in per-unit text blocks after the app script, so the app works before the audio has finished loading; the English blocks come after all the German ones. A unit's sounds work as soon as the page has read its block, and are unpacked on first use. A 🔊 tap before then shows *wird vorbereitet …* and plays when they arrive; a card's word asked for in that time plays then too.

@@ -1,10 +1,17 @@
 """Offline tests for course_audio.py (planning only) and build_course_app.py."""
 from __future__ import annotations
 
+import array
+import base64
+import contextlib
 import copy
+import io
 import json
+import math
 from pathlib import Path
 import re
+import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -12,6 +19,7 @@ from unittest import mock
 import study_pack as pack
 import course_audio
 import build_course_app
+import language
 import speech
 
 NEEDS_DICTS = unittest.skipUnless(speech.dictionaries_available(), "pip install pyspellchecker")
@@ -396,6 +404,103 @@ class CourseAppTests(unittest.TestCase):
             self.assertIn(place, page)
         self.assertIn("RATES=[[0.6,'0,6×'],[0.7,'0,7×'],[0.8,'0,8×'],[0.9,'0,9×'],[1,'1×'],[1.2,'1,2×']]", page)
         self.assertIn("preservesPitch", page)                                        # slower, not lower
+
+    # -- the audio format: MP3 for every browser, Opus for a smaller file ---------------------------------------
+    def sine(self, path, seconds=0.4):
+        """A short tone as an MP3 at the service's rate: stands in for a synthesized clip."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run([speech.ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                        f"sine=frequency=300:duration={seconds}:sample_rate=24000", "-ac", "1", "-c:a", "libmp3lame",
+                        "-b:a", "48k", str(path)], check=True)
+
+    def fake_clips(self, course):
+        """Every clip of the course's plan, so that a real (not placeholder) build has something to encode."""
+        clips, _ = course_audio.build_course_plan(course)
+        model = course["cache"] / "model.mp3"
+        self.sine(model)
+        (course["cache"] / "clips").mkdir(parents=True, exist_ok=True)
+        for cid in clips:
+            shutil.copy(model, course["cache"] / "clips" / f"{cid}.mp3")
+
+    def decoded(self, path, rate=24000):
+        run = subprocess.run([speech.ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-i", str(path), "-ac", "1",
+                              "-ar", str(rate), "-f", "s16le", "-"], capture_output=True, check=True)
+        return array.array("h", run.stdout)
+
+    def test_an_opus_clip_is_an_ogg_file_that_keeps_the_level_and_the_length(self):
+        cache, ff = self.root / "cache", speech.ffmpeg_exe()
+        self.sine(cache / "clips" / "a_x.mp3")
+        data = base64.b64decode(build_course_app.compressed(cache, "a_x", "24k", ff, "opus"))
+        stored = cache / "app" / f"opus-24k-{build_course_app.OPUS_PROFILE}" / "a_x.ogg"
+        self.assertEqual(stored.read_bytes(), data)
+        self.assertTrue(data.startswith(b"OggS") and b"OpusHead" in data[:64])
+        self.assertFalse(list(stored.parent.glob("*.part")))                          # nothing half written is left
+        ours, theirs = self.decoded(stored), self.decoded(cache / "clips" / "a_x.mp3")
+        self.assertAlmostEqual(len(ours) / 24000, len(theirs) / 24000, delta=0.05)    # the same length
+        rms = lambda s: (sum(x * x for x in s) / len(s)) ** 0.5
+        self.assertLess(abs(20 * math.log10(rms(ours) / rms(theirs))), 1.5)           # about the same loudness
+        (cache / "clips" / "a_x.mp3").unlink()                                        # encoded once, then kept
+        self.assertEqual(base64.b64decode(build_course_app.compressed(cache, "a_x", "24k", ff, "opus")), data)
+
+    def test_an_mp3_clip_is_still_what_it_was(self):
+        cache, ff = self.root / "cache", speech.ffmpeg_exe()
+        self.sine(cache / "clips" / "a_y.mp3")
+        data = base64.b64decode(build_course_app.compressed(cache, "a_y", "32k", ff))
+        self.assertFalse(data.startswith(b"OggS"))
+        self.assertEqual((cache / "app" / "32k" / "a_y.mp3").read_bytes(), data)      # the folder older caches use
+
+    def test_the_opus_probe_is_a_small_valid_clip(self):
+        probe = base64.b64decode(build_course_app.opus_probe(speech.ffmpeg_exe()))
+        self.assertTrue(probe.startswith(b"OggS") and len(probe) < 3000)
+        path = self.root / "probe.ogg"
+        path.write_bytes(probe)
+        self.assertAlmostEqual(len(self.decoded(path)) / 24000, 0.2, delta=0.05)
+
+    @NEEDS_DICTS
+    def test_an_opus_app_embeds_ogg_clips_a_probe_and_a_notice(self):
+        course = course_audio.load_course(self.course_path)
+        self.fake_clips(course)
+        opus, mp3 = self.root / "app_opus.html", self.root / "app_mp3.html"
+        build_course_app.build(course, opus, audio_format="opus")
+        build_course_app.build(course_audio.load_course(self.course_path), mp3)
+
+        def payloads(path):
+            page = path.read_text(encoding="utf-8")
+            return page, [part.partition(":")[2] for text in re.findall(r'<script type="text/plain" id="au-\d+">(.*?)</script>', page, re.S)
+                          for part in text.split(";")]
+        page, clips = payloads(opus)
+        self.assertTrue(clips and all(c.startswith("T2dn") for c in clips))           # "Ogg" in base64
+        self.assertRegex(page, r"var PROBE='T2dn[A-Za-z0-9+/=]+';")
+        self.assertIn('<div class="codec-warn" id="codec-warn" role="alert" hidden>', page)
+        self.assertIn("Opus", re.search(r'id="codec-warn"[^>]*>(.*?)</div>', page).group(1))
+        self.assertIn("data:audio/ogg;base64,", page)                                 # a single tap plays it as Ogg
+        page, clips = payloads(mp3)
+        self.assertTrue(clips and not any(c.startswith("T2dn") for c in clips))
+        self.assertIn("var PROBE='';", page)                                          # an MP3 app asks no questions
+        self.assertNotIn('id="codec-warn"', page)
+
+    def test_the_opus_notice_is_translated_for_other_languages(self):
+        for code in ("es", "ar", "ja"):
+            self.assertIn("cannot play the audio format", language.ui_table(language.profile(code))[build_course_app.OPUS_NOTICE])
+        self.assertNotIn(build_course_app.OPUS_NOTICE, language.ui_table(language.profile("de")))   # German keeps its own
+
+    def test_the_audio_format_and_its_rates_are_checked(self):
+        self.assertEqual(build_course_app.MP3_RATES, ("32k", "24k", "24k"))           # what every earlier build used
+        self.assertEqual(build_course_app.OPUS_RATES, ("24k", "20k", "20k"))
+        with self.assertRaisesRegex(Exception, "audio format is one of mp3, opus"):
+            build_course_app.build(course_audio.load_course(self.course_path), self.root / "x.html", audio_format="wav")
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            build_course_app.main(["--course", str(self.course_path), "--output", str(self.root / "y.html"), "--audio-format", "wav"])
+
+    @NEEDS_DICTS
+    def test_an_ffmpeg_without_opus_is_named_before_anything_is_encoded(self):
+        course = course_audio.load_course(self.course_path)
+        self.fake_clips(course)
+        with mock.patch.object(build_course_app, "encoder_available", lambda ff, name: False):
+            with self.assertRaisesRegex(Exception, "no Opus encoder"):
+                build_course_app.build(course, self.root / "z.html", audio_format="opus")
+        self.assertFalse((self.root / "z.html").exists())
+        self.assertTrue(build_course_app.encoder_available(speech.ffmpeg_exe(), "libmp3lame"))
 
     def test_an_app_without_audio_has_nothing_to_hear(self):
         out = self.root / "app_silent.html"

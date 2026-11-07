@@ -6,10 +6,12 @@ import asyncio
 import contextlib
 import io
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest import mock
 
+import embed_audio
 import inspect_games
 
 
@@ -23,6 +25,14 @@ class InspectGamesTests(unittest.TestCase):
         self.assertIn("L02: paare rounds 3, flashes 0", report)
         self.assertIn("PROBLEM: L01 Hör-Bingo: a right answer showed wrong", report)
         self.assertTrue(report.endswith("FAIL: 2 units, 1 problems"))
+
+    def test_the_game_checker_knows_every_audio_format_the_player_plays(self):
+        player = Path(embed_audio.__file__).read_text(encoding="utf-8")
+        checker = (Path(inspect_games.__file__).parent / "check_games.js").read_text(encoding="utf-8")
+        formats = set(re.findall(r"data:audio/([a-z0-9]+);base64,", player)) - {"wav"}      # wav: silence, not a clip
+        self.assertEqual(formats, {"mpeg", "ogg"})
+        named = set(re.search(r"AUDIO_SRC = /\^data:audio\\/\(\?:([a-z0-9|]+)\);base64,/", checker).group(1).split("|"))
+        self.assertEqual(named, formats, "the checker cannot tell which clip an app plays if it does not know its format")
 
     def test_a_missing_browser_says_how_to_name_one(self):
         with self.assertRaisesRegex(inspect_games.InspectError, "--browser"):
