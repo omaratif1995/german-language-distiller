@@ -216,7 +216,9 @@ UI_EN = {
     "▶ Nur Beispiele": "▶ Examples only", "wird vorbereitet …": "preparing …", "⟳ Runde": "⟳ Round",
     "Wiedergabe": "Playback", "⏹ Stopp": "⏹ Stop", "Beenden": "End", "Stopp": "Stop", "Einmal": "Once",
     "⟳ Endlos": "⟳ Endless", "∞ bis Stopp": "∞ until stop", "▶ Weiter:": "▶ Continue:", "Wort": "Word",
-    "Erklärung": "Explanation", "Absatz": "Paragraph", "Satz": "Sentence", "Wiederholen": "Repeat", "je": "each",
+    "Erklärung": "Explanation", "Absatz": "Paragraph", "Satz": "Sentence", "Wiederholen": "Repeat",
+    "Tempo": "Speed", "Tempo (Aussprache)": "Speed (pronunciation)", "0,6×": "0.6×", "0,7×": "0.7×", "0,8×": "0.8×",
+    "0,9×": "0.9×", "1,2×": "1.2×",
     "Jeder Satz": "Each sentence", "Am Ende": "At the end", "🔊-Taste": "🔊 button", "Noch einmal": "Again",
     "Noch einmal (am Satzanfang: zurück)": "Again (at the start of a sentence: back)", "Nächster Satz": "Next sentence",
     "Beispiele": "Examples", "Wörter": "Words", "▶ Wörter": "▶ Words", "Sprache": "Language",
@@ -227,7 +229,8 @@ UI_EN = {
     "Jede Erklärung, dann ihre Beispiele": "Every explanation, then its examples", "Geschichten": "Stories",
     "Die Geschichte, Folge für Folge": "The story, episode by episode", "Was möchtest du hören?": "What would you like to hear?",
     "Aus welchen Lektionen?": "Which lessons?", "So klingt es": "How it sounds", "Nur": "Only", "Ab": "From",
-    "Alle Lektionen": "All lessons",
+    "Alle Lektionen": "All lessons", "Mehr Beispiele": "More examples", "Alltag": "Everyday life", "Schreiben": "Writing",
+    "Prüfung": "Exam",
     "Es läuft weiter, wenn der Bildschirm aus ist: Pause, zurück und weiter auch auf dem Sperrbildschirm und am Kopfhörer.":
         "It keeps playing with the screen off: pause, back and next also on the lock screen and your headphones.",
 }

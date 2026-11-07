@@ -25,10 +25,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from embed_audio import AudioError, explanation_blocks, explanation_speech, lesson_plan, require, synthesize  # noqa: E402
 import language  # noqa: E402
 import speech  # noqa: E402
+import study_pack  # noqa: E402
 
 BYTES_PER_SECOND = 6000   # edge-tts delivers 48 kbit/s constant-bitrate MP3
 STEP = 0.4                # silence granularity in seconds
-COURSE_KEYS = {"title", "subtitle", "narration", "voices", "cache", "episodes_dir", "new_per_day", "private_terms", "units"}
+COURSE_KEYS = {"title", "subtitle", "narration", "more_examples", "voices", "cache", "episodes_dir", "new_per_day",
+               "private_terms", "units"}
+MORE_USES = ("daily", "writing", "exam")          # where an extra grammar example is used: everyday life, writing, the exam
 
 
 def load_course(path):
@@ -41,6 +44,8 @@ def load_course(path):
     course["title"] = course.get("title") or "Course"
     narration = course.get("narration")
     course["narration"] = json.loads((base / narration).read_text(encoding="utf-8-sig")) if narration else {}
+    more = course.get("more_examples")
+    course["more_examples"] = json.loads((base / more).read_text(encoding="utf-8-sig")) if more else {}
     course["cache"] = (base / course.get("cache", "_work/audio")).resolve()
     course["episodes_dir"] = (base / course.get("episodes_dir", "Audio")).resolve()
     course["private_terms"] = [str(term) for term in course.get("private_terms", [])]
@@ -74,7 +79,37 @@ def load_course(path):
     speech.use(course["profile"])                 # the course's language: its voice, words and notation
     course["voices"] = {"de": course["profile"]["voice"], "en": speech.DEFAULT_VOICES["en"],
                         **language.narrator(course["profile"]), **(course.get("voices") or {})}
+    check_more_examples(course)
     return course
+
+
+def check_more_examples(course):
+    """more_examples: per unit and grammar point, a list of extra examples, each {"use": daily, writing or exam,
+    "de": the sentence, "en": its English, "targets": the parts of "de" that show the grammar (marked like any example)}."""
+    lessons = {u["id"]: json.loads(u["lesson"].read_text(encoding="utf-8-sig")) for u in course["units"]}
+    for uid, points in course["more_examples"].items():
+        require(uid in lessons, f"more_examples names an unknown unit: {uid}")
+        grammar = {record["id"] for record in lessons[uid]["grammar"]}
+        for gid, items in points.items():
+            require(gid in grammar, f"more_examples names an unknown grammar point: {uid} {gid}")
+            require(isinstance(items, list) and items, f"more_examples {uid} {gid}: a list of examples")
+            for index, item in enumerate(items):
+                where = f"more_examples {uid} {gid} [{index}]"
+                require(isinstance(item, dict) and set(item) == {"use", "de", "en", "targets"},
+                        f'{where}: {{"use", "de", "en", "targets"}}')
+                require(item["use"] in MORE_USES, f"{where}: use is one of {', '.join(MORE_USES)}")
+                try:
+                    study_pack.target_spans(item, where)     # every target is in the sentence, as a whole word
+                except study_pack.PackError as error:
+                    raise AudioError(str(error)) from error
+
+
+def unit_narration(course, uid):
+    """The unit's grammar narration with each point's extra examples ("more") added: what the plan and the app read."""
+    told = {gid: ({"en": text} if isinstance(text, str) else dict(text)) for gid, text in course["narration"].get(uid, {}).items()}
+    for gid, items in course["more_examples"].get(uid, {}).items():
+        told.setdefault(gid, {})["more"] = items
+    return told
 
 
 def exact_term(text, term):
@@ -143,7 +178,7 @@ def build_course_plan(course):
     all_clips, units = {}, {}
     for unit in course["units"]:
         lesson = json.loads(unit["lesson"].read_text(encoding="utf-8-sig"))
-        clips, plan = unit_plan(lesson, course["voices"], course["narration"].get(unit["id"]),
+        clips, plan = unit_plan(lesson, course["voices"], unit_narration(course, unit["id"]),
                                 f"{course['title']}. {unit['label']}.")
         all_clips.update(clips)
         units[unit["id"]] = plan

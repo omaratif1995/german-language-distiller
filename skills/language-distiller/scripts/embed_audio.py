@@ -170,7 +170,8 @@ def build_plan(lesson, voices=None, narration=None):
         gid = record["id"]
         told = narration.get(gid) or {}
         told = {"en": told} if isinstance(told, str) else told
-        title = add(record["title"], "en", f"{gid}-head", teacher, pace, listed=not told)   # a narration names its topic
+        narrated = bool(told.get("de") or told.get("en"))
+        title = add(record["title"], "en", f"{gid}-head", teacher, pace, listed=not narrated)   # a narration names its topic
         if told.get("de"):
             explain[gid] = [add(explanation_speech(told["de"]), "de", None, teacher, pace, timed=True)]
             if told.get("en"):
@@ -185,6 +186,9 @@ def build_plan(lesson, voices=None, narration=None):
         for index, example in enumerate(record["examples"]):
             add(example["de"], "de", f'{gid}-ex-{index}')
             add(example["en"], "en")
+        for index, example in enumerate(told.get("more", [])):     # extra examples: in the app, not in the episodes
+            add(example["de"], "de", f'{gid}-more-{index}', listed=False)
+            add(example["en"], "en", listed=False)
 
     add(names["redemittel"], "de")
     previous = None
@@ -229,6 +233,10 @@ def lesson_plan(lesson, voices=None, narration=None):
     english.update({f'{record["id"]}-ex-{index}': add(example["en"], "en")  # an example's translation
                     for section in ("vocabulary", "grammar", "redemittel") for record in lesson[section]
                     for index, example in enumerate(record["examples"])})
+    for record in lesson["grammar"]:                                       # and an extra example's
+        told = (narration or {}).get(record["id"])
+        for index, example in enumerate(told.get("more", []) if isinstance(told, dict) else []):
+            english[f'{record["id"]}-more-{index}'] = add(example["en"], "en")
     plan = {"title": add(lesson["title"]),
             "sections": {key: add(name) for key, name in sections_of(lesson).items() if key != "story" or lesson.get("story")},
             "sequence": sequence, "controls": controls, "explain": explain, "explain_en": explain_en, "story": [],
@@ -275,11 +283,24 @@ def listening_order(prefix, lesson, plan):
     return seq
 
 
+def more_steps(prefix, rec, plan):
+    """A grammar point's extra examples (more_examples), after its own: <card>-m<n> on the card."""
+    steps, i = [], 0
+    while f'{rec["id"]}-more-{i}' in plan["controls"]:
+        steps.append(german_step(plan, f'{rec["id"]}-more-{i}', 1.0, f'{prefix}{rec["id"]}-m{i}'))
+        i += 1
+    return steps
+
+
 def examples_order(prefix, lesson, plan):
-    """Only the example sentences, in reading order."""
-    return [german_step(plan, f'{rec["id"]}-ex-{i}', 1.0, f'{prefix}{rec["id"]}-x{i}')
-            for section in ("vocabulary", "grammar", "redemittel") for rec in lesson[section]
-            for i in range(len(rec["examples"]))]
+    """Only the example sentences, in reading order, a grammar point's extra ones after its own."""
+    seq = []
+    for section in ("vocabulary", "grammar", "redemittel"):
+        for rec in lesson[section]:
+            seq += [german_step(plan, f'{rec["id"]}-ex-{i}', 1.0, f'{prefix}{rec["id"]}-x{i}') for i in range(len(rec["examples"]))]
+            if section == "grammar":
+                seq += more_steps(prefix, rec, plan)
+    return seq
 
 
 def words_order(prefix, lesson, plan):
@@ -294,6 +315,7 @@ def grammar_order(prefix, lesson, plan):
     for rec in lesson["grammar"]:
         seq += [[cid, 0.4, prefix + rec["id"], 0] for cid in plan["explain"][rec["id"]]]
         seq += [german_step(plan, f'{rec["id"]}-ex-{i}', 1.0, f'{prefix}{rec["id"]}-x{i}') for i in range(len(rec["examples"]))]
+        seq += more_steps(prefix, rec, plan)
     return seq
 
 
@@ -416,6 +438,16 @@ AUDIO_CSS = r"""
   .now-c button,.now button.x{width:40px;height:40px;padding:0;display:grid;place-items:center;background:rgba(255,255,255,.16);color:#ecfdf5}
   .now-c #now-p{background:#ecfdf5;color:#064e3b}
   .now button.x{width:36px;height:36px;font-size:16px}
+  .now button.now-r{min-width:46px;height:36px;padding:0 8px;font-size:13px;background:rgba(255,255,255,.16);color:#ecfdf5}
+  .now-tempo{position:fixed;left:50%;bottom:calc(72px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:31;width:max-content;
+             max-width:calc(100% - 24px);padding:10px 12px 12px;border-radius:16px;background:#0b1220;border:1px solid rgba(255,255,255,.18);
+             box-shadow:0 10px 26px rgba(0,0,0,.5);color:#ecfdf5}
+  .mode-practice .now-tempo{bottom:calc(208px + env(safe-area-inset-bottom))}
+  .now-tempo>span{display:block;font-size:12px;letter-spacing:1px;text-transform:uppercase;opacity:.8;margin-bottom:8px}
+  .now-tempo .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .now-tempo .chips button{font:inherit;font-size:14px;min-height:38px;padding:4px 12px;border-radius:999px;cursor:pointer;color:#fff;
+             background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.22)}
+  .now-tempo .chips button[aria-pressed="true"]{background:#6ee7b7;color:#064e3b;border-color:#6ee7b7;font-weight:700}
   .now svg{width:20px;height:20px;fill:currentColor}
   .now button:focus-visible{outline:2px solid #f2d36b;outline-offset:2px}
   .tip{position:absolute;z-index:40;max-width:min(300px,calc(100% - 16px));padding:8px 11px;border-radius:10px;background:#0b1220;color:#f8fafc;
@@ -430,6 +462,7 @@ LISTEN_HTML = """<div class="lp" id="lp" hidden data-unit="">
 <button type="button" class="lp-go" id="lp-go" hidden></button>
 <div class="lp-modes"><button type="button" data-m="all">▶ Ganze Lektion</button><button type="button" data-m="words">▶ Wörter</button><button type="button" data-m="ex">▶ Nur Beispiele</button><button type="button" data-m="gram">▶ Grammatik</button><button type="button" data-m="story">▶ Geschichte</button></div>
 <div class="lp-row" id="lp-en-row"><span>Sprache</span><div class="chips" id="lp-en"></div></div>
+<div class="lp-row"><span>Tempo</span><div class="chips" id="lp-rate"></div></div>
 <div class="lp-row"><span>Jeder Satz</span><div class="chips" id="lp-each"></div></div>
 <div class="lp-row"><span>Am Ende</span><div class="chips" id="lp-loop"></div></div>
 <div class="lp-row"><span>🔊-Taste</span><div class="chips" id="lp-one"></div></div>
@@ -438,7 +471,8 @@ LISTEN_HTML = """<div class="lp" id="lp" hidden data-unit="">
 <button type="button" id="now-b" aria-label="Noch einmal" title="Noch einmal (am Satzanfang: zurück)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zm14 0v14L9 12z"/></svg></button>
 <button type="button" id="now-p" aria-label="Pause" title="Pause"></button>
 <button type="button" id="now-n" aria-label="Nächster Satz" title="Nächster Satz"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
-</div><span class="now-i"><b id="now-t"></b><small id="now-s"></small></span><button type="button" id="now-x">⏹ Stopp</button></div>
+</div><span class="now-i"><b id="now-t"></b><small id="now-s"></small></span><button type="button" class="now-r" id="now-r" aria-label="Tempo" title="Tempo">1×</button><button type="button" id="now-x">⏹ Stopp</button></div>
+<div class="now-tempo" id="now-tempo" hidden><span>Tempo</span><div class="chips" id="now-tempo-c"></div></div>
 <div class="tip" id="tip" hidden></div>
 """
 
@@ -450,13 +484,20 @@ LISTEN_HTML = """<div class="lp" id="lp" hidden data-unit="">
 # It runs in the host's scope, so its names must not repeat the host's (the app already has again(), end(), bar).
 LISTEN_JS = r"""
   /* ---------------- listening: every run plays as one audio track, so it goes on with the screen off ---------------- */
-  var A=load('listen',{one:0,each:2,loop:1,en:0}); /* one: plays per 🔊 tap (0 = until tapped again); each: plays of every German sentence in a session; loop: start again at the end; en: each word and example's English after it */
+  var A=load('listen',{one:0,each:2,loop:1,en:0,rate:1}); /* one: plays per 🔊 tap (0 = until tapped again); each: plays of every German sentence in a session; loop: start again at the end; en: each word and example's English after it; rate: the speed of every sound */
   var AT=load('listen-at',{});                     /* per unit, where a stopped session goes on: {m: mode, i: step, n: steps, c: first clip}; '*': a course session's, with its list of units and unit u */
   var player=new Audio(), R=null, held=null, lastF=null, lock=null, tipT=null, unlocked=false;
   var RATE=22050, PCM={}, cached=0, SIL={}, decoder=null;      /* clips decoded once, and silences, as small WAV blobs */
   var SILENT='data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQIAAAAAAA==';
   var lp=d.getElementById('lp'), lpGo=d.getElementById('lp-go'), tip=d.getElementById('tip'), nowBar=d.getElementById('now'), nowB=d.getElementById('now-b'),
-      nowP=d.getElementById('now-p'), nowN=d.getElementById('now-n'), nowT=d.getElementById('now-t'), nowS=d.getElementById('now-s'), nowX=d.getElementById('now-x');
+      nowP=d.getElementById('now-p'), nowN=d.getElementById('now-n'), nowT=d.getElementById('now-t'), nowS=d.getElementById('now-s'), nowX=d.getElementById('now-x'),
+      nowR=d.getElementById('now-r'), nowTempo=d.getElementById('now-tempo');
+  /* the speed of every sound: the phone stretches the voice without changing its pitch, and the pauses grow with it */
+  var RATES=[[0.6,'0,6×'],[0.7,'0,7×'],[0.8,'0,8×'],[0.9,'0,9×'],[1,'1×'],[1.2,'1,2×']];
+  function rateNow(){ var v=+A.rate||1; return RATES.some(function(x){ return x[0]===v; })?v:1; }
+  function tempo(){ var v=rateNow(); try{ player.defaultPlaybackRate=v; if(player.playbackRate!==v) player.playbackRate=v; }catch(e){} }
+  try{ player.preservesPitch=player.mozPreservesPitch=player.webkitPreservesPitch=true; }catch(e){}
+  tempo();
   var LABEL={all:'Ganze Lektion',words:'Wörter',ex:'Nur Beispiele',gram:'Grammatik',story:'Geschichte'};
   var ICON={play:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
             pause:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zm6.5 0H17v14h-3.5z"/></svg>'};
@@ -465,7 +506,9 @@ LISTEN_JS = r"""
   function gapNext(dur,f){ return 300+f*(gapAgain(dur)+400); }         /* f: the step's pause factor; 1.5–2 s after an example */
   function stepsOf(m){ return m==='ex'?EXS:m==='story'?STO:m==='words'?WRD:m==='gram'?GRM:SEQ; }
   function mark(el,on){ if(el) el.classList.toggle('is-playing',on); }
-  function follow(el,stay){ if(lastF) lastF.classList.remove('follow'); lastF=el||null; if(!el) return; el.classList.add('follow'); if(stay) return;
+  function follow(el,stay){ if(lastF) lastF.classList.remove('follow'); lastF=el||null; if(!el) return; el.classList.add('follow');
+    var fold=el.closest&&el.closest('details.more'); if(fold&&!fold.open) fold.open=true;   /* a grammar point's extra examples open as they are heard */
+    if(stay) return;
     var b=el.getBoundingClientRect(); if(b.top<90||b.bottom>innerHeight-90) el.scrollIntoView({block:'center',behavior:'smooth'}); }
   function wake(on){ try{ if(on&&!lock&&navigator.wakeLock) navigator.wakeLock.request('screen').then(function(l){ if(R) lock=l; else l.release(); },function(){});
     else if(!on&&lock){ lock.release(); lock=null; } }catch(e){} }
@@ -530,12 +573,12 @@ LISTEN_JS = r"""
   /* one clip now (a card's word, a game's sentence); while the page is still loading its sound, it plays once that is
      there, unless something else was asked for in the meantime */
   var asked=0;
-  function sound(data){ player.loop=false; player.src='data:audio/mpeg;base64,'+data; go(); }
+  function sound(data){ player.loop=false; player.src='data:audio/mpeg;base64,'+data; tempo(); go(); }
   function clip(id){ var data=need(id), mine=++asked; if(data){ sound(data); return true; }
     if(!id||d.readyState!=='loading') return false;
     whenAudio([id]).then(function(){ var later=need(id); if(mine===asked&&!R&&later) sound(later); }); return true; }
-  function attach(r,play){ player.loop=!r.o.laps; player.src=r.t.url; r.last=r.pos;
-    player.onloadedmetadata=function(){ player.onloadedmetadata=null; if(R!==r) return; player.currentTime=r.pos; if(play&&!r.paused) go(); }; }
+  function attach(r,play){ player.loop=!r.o.laps; player.src=r.t.url; tempo(); r.last=r.pos;
+    player.onloadedmetadata=function(){ player.onloadedmetadata=null; if(R!==r) return; player.currentTime=r.pos; tempo(); if(play&&!r.paused) go(); }; }
   function prepare(r,from){ r.ready=false; r.from=from; showBar();
     var pre=r.o.pre; r.o.pre=null;                                             /* a course's next unit, built while the last one played */
     (pre?Promise.resolve(pre):track(r)).then(function(t){ if(R!==r&&held!==r){ if(t) URL.revokeObjectURL(t.url); return; }
@@ -556,7 +599,7 @@ LISTEN_JS = r"""
     if(r.o.mode){ if(r.done){ if(!r.o.course) delete AT[r.o.unit]; } else if(r.ready) remember(r,t); save('listen-at',AT); }
     if(r.next){ if(r.next.t) URL.revokeObjectURL(r.next.t.url); r.next=null; }
     if(r.t) URL.revokeObjectURL(r.t.url); r.t=null; r.ready=false; }
-  function stopAll(){ asked++; if(R) drop(R); if(held) drop(held); R=held=null; follow(null); wake(false); if(nowBar) nowBar.hidden=true; heard(null); listening(); }
+  function stopAll(){ asked++; if(R) drop(R); if(held) drop(held); R=held=null; follow(null); wake(false); if(nowBar) nowBar.hidden=true; if(nowTempo) nowTempo.hidden=true; heard(null); listening(); }
   /* items: [clip id, pause factor, element (or its id) to highlight, repeatable, English clip]; o: {btn, each, laps (0 = endless),
      follow, stop, label, en (with English)}, for a session also unit, mode and at (its first step), and for a course session
      course ({list: its units}), where (the unit's name for the bar) and then() ([items, o] of the next unit, or null) */
@@ -585,8 +628,8 @@ LISTEN_JS = r"""
     if(r.o.where) s.push(r.o.where);
     if(many) s.push((r.cur<0?r.from:r.cur)+1+' / '+n);
     if(!r.ready) s.push('wird vorbereitet …');
-    else{ if(many&&(r.o.each||1)>1) s.push('je '+r.o.each+'×');
-      if(r.o.laps!==1) s.push(r.o.laps?(r.lap+' / '+r.o.laps):(many?'⟳ Runde '+r.lap:'⟳ '+r.lap+'×')); }
+    else if(r.o.laps!==1) s.push(r.o.laps?(r.lap+' / '+r.o.laps):(many?'⟳ Runde '+r.lap:'⟳ '+r.lap+'×'));
+    if(nowR) nowR.textContent=RATES.filter(function(x){ return x[0]===rateNow(); })[0][1];   /* the speed, one tap to change it */
     nowT.textContent=r.o.label||'Wiedergabe'; nowS.textContent=s.join(' · ');
     nowX.textContent=many?'✕':'⏹ Stopp'; nowX.classList.toggle('x',many); nowX.setAttribute('aria-label',many?'Beenden':'Stopp'); }
   function pauseOrPlay(){ var r=R; if(!r) return;
@@ -619,7 +662,7 @@ LISTEN_JS = r"""
   function chipRow(id,items,value,set){ var box=d.getElementById(id); if(!box) return; box.innerHTML='';
     items.forEach(function(it){ var b=d.createElement('button'); b.type='button'; b.textContent=it[1]; b.setAttribute('aria-pressed',String(it[0]===value));
       b.addEventListener('click',function(){ set(it[0]); save('listen',A); liveSettings(); panel(); listening(); }); box.appendChild(b); }); }
-  function liveSettings(){ [R,held].forEach(function(r){ if(!r||!r.o.mode) return;
+  function liveSettings(){ tempo(); [R,held].forEach(function(r){ if(!r||!r.o.mode) return;
       var laps=r.o.course?1:A.loop?0:1, en=!!A.en;                               /* a course plays its units once each, and loops as a whole */
       if(r.next){ if(r.next.t) URL.revokeObjectURL(r.next.t.url); r.next=null; }   /* the next unit is built again, the new way */
       if(r.o.each===A.each&&r.o.laps===laps&&!!r.o.en===en) return;
@@ -631,6 +674,7 @@ LISTEN_JS = r"""
     chipRow('lp-loop',[[0,'Einmal'],[1,'⟳ Endlos']],A.loop,function(v){A.loop=v;});
     chipRow('lp-one',[[1,'1×'],[3,'3×'],[0,'∞ bis Stopp']],A.one,function(v){A.one=v;});
     chipRow('lp-en',EN_CHIPS,A.en?1:0,function(v){A.en=v;}); d.getElementById('lp-en-row').hidden=!ENG;
+    chipRow('lp-rate',RATES,rateNow(),function(v){A.rate=v;});
     var u=lp.getAttribute('data-unit'), at=AT[u], steps=at&&stepsOf(at.m)[u], busy=[R,held].some(function(r){ return r&&r.o.mode&&r.o.unit===u; });
     ['words','gram','story'].forEach(function(m){ var s=stepsOf(m)[u]; lp.querySelector('[data-m="'+m+'"]').hidden=!(s&&s.length); });
     lpGo.hidden=busy||!(steps&&steps.length===at.n&&steps[0][0]===at.c&&at.i>0&&at.i<steps.length);    /* a stopped session goes on where it stopped */
@@ -652,6 +696,9 @@ LISTEN_JS = r"""
   nowB.addEventListener('click',function(){ skip(-1); });
   nowN.addEventListener('click',function(){ skip(1); });
   nowP.addEventListener('click',pauseOrPlay); nowX.addEventListener('click',endRun);
+  nowR.addEventListener('click',function(){ nowTempo.hidden=!nowTempo.hidden; if(!nowTempo.hidden) chipRow('now-tempo-c',RATES,rateNow(),function(v){A.rate=v;}); });
+  nowTempo.addEventListener('click',function(e){ if(e.target.closest('button')) setTimeout(function(){ nowTempo.hidden=true; },220); });   /* chosen: it closes */
+  d.addEventListener('click',function(e){ if(!nowTempo.hidden&&!e.target.closest('#now-tempo,#now-r')) nowTempo.hidden=true; });
   d.addEventListener('click',function(e){
     var b=e.target.closest('.speak-button,.explain-button,.listen-open,.story-play,.ss[data-audio],.lw'); if(!b) return;
     if(b.classList.contains('lw')){ gloss(b); return; }

@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import tempfile
 import unittest
+from unittest import mock
 
 import study_pack as pack
 import course_audio
@@ -332,6 +333,69 @@ class CourseAppTests(unittest.TestCase):
         words = json.loads(re.search(r"WRD=(\{.*?\}), GRM=", page, re.S).group(1))
         self.assertTrue(all(len(step) == 4 for step in words["U1"]))
         self.assertNotIn('"en":true', page)
+
+    def more_examples(self, items):
+        (self.root / "more.json").write_text(json.dumps({"U1": {"g1": items}}), encoding="utf-8")
+        data = json.loads(self.course_path.read_text(encoding="utf-8"))
+        self.course_path.write_text(json.dumps({**data, "more_examples": "more.json"}), encoding="utf-8")
+
+    @NEEDS_DICTS
+    def test_a_grammar_point_gets_more_examples_to_read_and_hear(self):
+        self.more_examples([{"use": "daily", "de": "Trotz des Regens gehen wir spazieren.", "en": "Despite the rain we go for a walk.",
+                             "targets": ["Trotz des Regens"]},
+                            {"use": "writing", "de": "Trotz der Verspätung erreichte das Paket uns rechtzeitig.",
+                             "en": "Despite the delay the parcel reached us in time.", "targets": ["Trotz der Verspätung"]}])
+        course = course_audio.load_course(self.course_path)
+        unit = course_audio.build_course_plan(course)[1]["units"]["U1"]
+        self.assertIn("g1-more-1", unit["controls"])
+        self.assertIn("g1-more-1", unit["english"])
+        self.assertNotIn(unit["controls"]["g1-more-0"], unit["sequence"])          # not in the MP3 episodes
+        out = self.root / "app_more.html"
+        build_course_app.build(course_audio.load_course(self.course_path), out, audio=True, placeholder_audio=True)
+        page = out.read_text(encoding="utf-8")
+        self.assertIn('<details class="more"><summary>Mehr Beispiele (2)</summary>', page)
+        self.assertIn('<div class="ex more" id="U1-g1-m0"><button type="button" class="speak-button"', page)
+        self.assertIn('<span class="use">Alltag</span> <mark>Trotz des Regens</mark> gehen wir spazieren.', page)
+        self.assertIn('<span class="use">Schreiben</span>', page)
+        grammar = json.loads(re.search(r"GRM=(\{.*?\}), STO=", page, re.S).group(1))
+        self.assertEqual([step[2] for step in grammar["U1"]][-2:], ["U1-g1-m0", "U1-g1-m1"])   # heard after its own examples
+        self.assertTrue(all(len(step) == 5 for step in grammar["U1"][-2:]))        # with their English
+        used, first = set(), course["units"][0]
+        build_course_app.add_audio_buttons(first["sheet"].read_text(encoding="utf-8"),
+                                           json.loads(first["lesson"].read_text(encoding="utf-8")), unit, used)
+        self.assertLessEqual({unit["controls"]["g1-more-0"], unit["controls"]["g1-more-1"]}, used)   # their 🔊 is embedded
+
+    @NEEDS_DICTS
+    def test_a_clip_that_is_played_but_not_embedded_stops_the_build(self):
+        add = build_course_app.add_audio_buttons
+
+        def forgetful(page, lesson, unit_plan, used, *args, **kwargs):          # as if an example's 🔊 forgot its clip
+            page = add(page, lesson, unit_plan, used, *args, **kwargs)
+            used.discard(unit_plan["controls"]["v1-ex-0"])
+            return page
+        with mock.patch.object(build_course_app, "add_audio_buttons", forgetful):
+            with self.assertRaisesRegex(Exception, r"played but not embedded \(2\): a_"):     # one in each unit
+                build_course_app.build(course_audio.load_course(self.course_path), self.root / "app_unsent.html",
+                                       audio=True, placeholder_audio=True)
+        self.assertFalse((self.root / "app_unsent.html").exists())
+
+    def test_more_examples_are_checked(self):
+        self.more_examples([{"use": "holiday", "de": "Trotz des Regens.", "en": "Despite the rain.", "targets": ["Trotz"]}])
+        with self.assertRaisesRegex(Exception, "use is one of daily, writing, exam"):
+            course_audio.load_course(self.course_path)
+        self.more_examples([{"use": "daily", "de": "Trotz des Regens.", "en": "Despite the rain.", "targets": ["wegen"]}])
+        with self.assertRaisesRegex(Exception, "absent or inside another word"):
+            course_audio.load_course(self.course_path)
+
+    @NEEDS_DICTS
+    def test_the_speed_is_one_setting_everywhere(self):
+        out = self.root / "app_speed.html"
+        build_course_app.build(course_audio.load_course(self.course_path), out, audio=True, placeholder_audio=True)
+        page = out.read_text(encoding="utf-8")
+        for place in ('id="lp-rate"', 'id="h-rate"', 'id="s-rate"', 'id="now-r"', 'id="now-tempo"'):   # panel, Hören, Üben, the bar
+            self.assertIn(place, page)
+        self.assertIn("RATES=[[0.6,'0,6×'],[0.7,'0,7×'],[0.8,'0,8×'],[0.9,'0,9×'],[1,'1×'],[1.2,'1,2×']]", page)
+        self.assertIn("preservesPitch", page)                                        # slower, not lower
 
     def test_an_app_without_audio_has_nothing_to_hear(self):
         out = self.root / "app_silent.html"

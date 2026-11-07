@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from embed_audio import (AUDIO_CSS, LISTEN_HTML, LISTEN_JS, AudioError, examples_order, explanation_sentences,  # noqa: E402
                          grammar_order, inject_example_buttons, inject_story_audio, listening_order, number_examples,
                          play_button, require, sentence_times, story_order, transform_card, words_order)
-from course_audio import build_course_plan, exact_term, ffmpeg_exe, load_course  # noqa: E402
+from course_audio import build_course_plan, exact_term, ffmpeg_exe, load_course, unit_narration  # noqa: E402
 import language  # noqa: E402
 import speech  # noqa: E402
 import study_pack  # noqa: E402
@@ -72,6 +72,10 @@ def add_audio_buttons(page, lesson, unit_plan, used, prof=None, ui=None):
             require(n == 1, f"cannot place explanation audio for {rec['id']}")
             return inject_example_buttons(block, [take(f'{rec["id"]}-ex-{i}') for i in range(len(rec["examples"]))], rec["id"])
         page = transform_card(page, "rule", rec["id"], rule)
+        index = 0                                              # the extra examples' 🔊 (placed by more_html) need their clips too
+        while f'{rec["id"]}-more-{index}' in controls:
+            take(f'{rec["id"]}-more-{index}')
+            index += 1
 
     for rec in lesson["redemittel"]:
         def phrase(block, rec=rec):
@@ -125,33 +129,54 @@ def explanation_html(text, lang, prof, clip="", cache=None):
     return f'<div class="say" lang="{html.escape(lang)}"{source}>{"".join(parts)}</div>'
 
 
+USE_LABEL = {"daily": "Alltag", "writing": "Schreiben", "exam": "Prüfung"}     # more_examples: where it is used
+
+
+def more_html(gid, more, unit_plan=None, ui=None):
+    """A grammar point's extra examples, folded under its own («Mehr Beispiele»): each with where it is used, the
+    grammar marked, its 🔊 and its English. Ids <card>-m<n>, so a listening session can follow them."""
+    tr, controls = (lambda text: html.escape((ui or {}).get(text, text))), (unit_plan or {}).get("controls", {})
+    rows = []
+    for index, example in enumerate(more):
+        clip = controls.get(f"{gid}-more-{index}")
+        rows.append(f'<div class="ex more" id="{gid}-m{index}">{play_button(clip, "Play example") if clip else ""}'
+                    f'<span class="use">{tr(USE_LABEL[example["use"]])}</span> {study_pack.marked(example)} '
+                    f'<span class="tr" lang="en">— {html.escape(example["en"])}</span></div>')
+    return f'<details class="more"><summary>{tr("Mehr Beispiele")} ({len(more)})</summary>{"".join(rows)}</details>'
+
+
 def write_explanations(page, lesson, narration, unit_plan=None, cache=None, prof=None, ui=None):
     """A grammar card whose narration speaks the course's language shows it written out, in place of the short
     English meaning, rule and contrast: the narration's blocks, its own title and patterns when it gives them, and
-    the English backup folded away («Auf Englisch»). With audio, the sentence being read lights up."""
+    the English backup folded away («Auf Englisch»). With audio, the sentence being read lights up.
+    A point's extra examples ("more", from more_examples) follow its own, folded (more_html)."""
     prof, ui = prof or language.profile(lesson.get("target_language", "de")), ui or {}
     english = language.profile("de")                  # English sentences start like German ones, with a capital
     for rec in lesson["grammar"]:
         told = (narration or {}).get(rec["id"])
-        if not isinstance(told, dict) or not told.get("de"):
+        told = {"en": told} if isinstance(told, str) else (told or {})
+        if not told.get("de") and not told.get("more"):
             continue
         clips = {lang: ((unit_plan or {}).get(key, {}).get(rec["id"]) or [""])[0]
                  for lang, key in (("de", "explain"), ("en", "explain_en"))}
 
         def card(block, rec=rec, told=told, clips=clips):
-            say = explanation_html(told["de"], prof["code"], prof, clips["de"], cache)
-            if told.get("en"):
-                say += (f'<details class="say-en"><summary>{html.escape(ui.get("Auf Englisch", "Auf Englisch"))}</summary>'
-                        f'{explanation_html(told["en"], "en", english, clips["en"], cache)}</details>')
-            block, n = re.subn(r"<p><b>Meaning:</b>.*?</p><p><b>Rule:</b>.*?</p>", lambda m: say, block, count=1, flags=re.S)
-            require(n == 1, f"cannot place the written explanation for {rec['id']}")
-            block = re.sub(r'<p class="contrast">.*?</p>', "", block, count=1, flags=re.S)
-            if told.get("title"):
-                block = re.sub(r"<h3>.*?</h3>", lambda m: f"<h3>{html.escape(told['title'])}</h3>", block, count=1, flags=re.S)
-            if told.get("patterns"):
-                rows = "".join(f'<p><b>{html.escape(p["label"])}:</b> {html.escape(p["form"])}</p>' for p in told["patterns"])
-                block = re.sub(r'<div class="patterns">.*?</div>', lambda m: f'<div class="patterns">{rows}</div>', block,
-                               count=1, flags=re.S)
+            if told.get("de"):
+                say = explanation_html(told["de"], prof["code"], prof, clips["de"], cache)
+                if told.get("en"):
+                    say += (f'<details class="say-en"><summary>{html.escape(ui.get("Auf Englisch", "Auf Englisch"))}</summary>'
+                            f'{explanation_html(told["en"], "en", english, clips["en"], cache)}</details>')
+                block, n = re.subn(r"<p><b>Meaning:</b>.*?</p><p><b>Rule:</b>.*?</p>", lambda m: say, block, count=1, flags=re.S)
+                require(n == 1, f"cannot place the written explanation for {rec['id']}")
+                block = re.sub(r'<p class="contrast">.*?</p>', "", block, count=1, flags=re.S)
+                if told.get("title"):
+                    block = re.sub(r"<h3>.*?</h3>", lambda m: f"<h3>{html.escape(told['title'])}</h3>", block, count=1, flags=re.S)
+                if told.get("patterns"):
+                    rows = "".join(f'<p><b>{html.escape(p["label"])}:</b> {html.escape(p["form"])}</p>' for p in told["patterns"])
+                    block = re.sub(r'<div class="patterns">.*?</div>', lambda m: f'<div class="patterns">{rows}</div>', block,
+                                   count=1, flags=re.S)
+            if told.get("more"):
+                block = block[:-len("</article>")] + more_html(rec["id"], told["more"], unit_plan, ui) + "</article>"
             return block
         page = transform_card(page, "rule", rec["id"], card)
     return page
@@ -306,6 +331,10 @@ APP_CSS = r"""
   details.say-en summary{cursor:pointer;color:var(--muted);font-size:13.5px;padding:2px 0}
   details.say-en .say{margin-bottom:2px}
   details.say-en .say p{font-size:14.5px}
+  details.more{margin:12px 0 2px;padding-top:8px;border-top:1px dashed var(--line)}
+  details.more>summary{cursor:pointer;color:var(--accent);font-size:14.5px;font-weight:700;padding:4px 0 6px}
+  .ex .use{display:inline-block;font-size:10.5px;font-weight:700;font-style:normal;letter-spacing:.6px;text-transform:uppercase;
+           color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:0 7px;margin-right:6px;vertical-align:2px}
   .mode-practice .lernen,.mode-games .lernen,.mode-listen .lernen{display:none}
   #practice,#games,#listen{display:none}
   .mode-practice #practice,.mode-games #games,.mode-listen #listen{display:block}
@@ -582,6 +611,7 @@ __LISTEN__
     if(!scopes.some(function(s){ return s[0]===A.scope; })) A.scope='all';
     chipRow('h-scope',scopes,A.scope,function(v){A.scope=v;});
     chipRow('h-lang',EN_CHIPS,A.en?1:0,function(v){A.en=v;}); d.getElementById('h-lang-row').hidden=!ENG;
+    chipRow('h-rate',RATES,rateNow(),function(v){A.rate=v;});
     chipRow('h-each',[[1,'1×'],[2,'2×'],[3,'3×'],[5,'5×']],A.each,function(v){A.each=v;});
     chipRow('h-loop',[[0,'Einmal'],[1,'⟳ Endlos']],A.loop,function(v){A.loop=v;});
     var at=AT['*'], st=at&&at.list&&at.list.indexOf(at.u)>=0?unitSteps(at.u,at.m):[];
@@ -595,7 +625,7 @@ __LISTEN__
   function heard(r){ if(!hNow) return; if(!r||!r.o.course){ hNow.hidden=true; return; }
     var it=r.items[r.cur>=0?r.cur:r.from]||[], el=typeof it[2]==='string'?d.getElementById(it[2]):null, de='', en='', part, e=d.getElementById('h-en');
     if(!el){ part=d.querySelector('section.unit[id="'+r.o.unit+'"] h1'); de=part?part.textContent:''; }
-    else if(el.classList.contains('ex')){ de=textOf(el,'.tr'); part=el.querySelector('.tr'); en=part?part.textContent.replace(/^\s*—\s*/,''):''; }
+    else if(el.classList.contains('ex')){ de=textOf(el,'.tr,.use'); part=el.querySelector('.tr'); en=part?part.textContent.replace(/^\s*—\s*/,''):''; }
     else if(el.classList.contains('voc')){ part=el.querySelector('.top .de'); de=part?textOf(part):''; part=el.querySelector('.top .en'); en=part?part.textContent:''; }
     else if(el.classList.contains('phrase')){ part=el.querySelector('.head'); de=part?textOf(part):''; part=el.querySelector('.meaning'); en=part?part.textContent:''; }
     else if(el.classList.contains('rule')||el.classList.contains('story')){ part=el.querySelector('h3'); de=part?textOf(part):''; }
@@ -736,6 +766,8 @@ __LISTEN__
     chips('s-round',[[10,'10'],[20,'20'],[0,'ohne Pause']],[S.round],function(v){ S.round=v; persist(); renderSettings(); });
     chips('s-mode',[[false,'Tagesplan'],[true,'Durchblättern']],[S.browse],function(v){ S.browse=v; persist(); start(); });
     chips('s-auto',[[true,'Ton an'],[false,'Ton aus']],[S.auto],function(v){ S.auto=v; persist(); renderSettings(); });
+    chipRow('s-rate',RATES,rateNow(),function(v){ A.rate=v; setTimeout(renderSettings); });   /* the same speed as in Hören and the panel */
+    d.getElementById('s-rate-g').hidden=!Object.keys(IDX).length;
     var stat=d.getElementById('s-stat'); stat.innerHTML='';             /* every lesson, one line per book */
     (CFG.groups||[[null,ORDER]]).forEach(function(g){ var n={neu:0,lern:0,sicher:0,fest:0}, line=d.createElement('span');
       CARDS.forEach(function(c){ if(g[1].indexOf(c.u)<0||S.kinds.indexOf(c.k)<0) return; var s=state[c.id];
@@ -1025,6 +1057,7 @@ PRACTICE = """
 <div class="group"><div class="lab">Pause nach … Karten</div><div class="chips" id="s-round"></div></div>
 <div class="group"><div class="lab">Modus</div><div class="chips" id="s-mode"></div></div>
 <div class="group"><div class="lab">Ton (Aussprache und Spiele)</div><div class="chips" id="s-auto"></div></div>
+<div class="group" id="s-rate-g"><div class="lab">Tempo (Aussprache)</div><div class="chips" id="s-rate"></div></div>
 <div class="group"><div class="lab">Fortschritt</div><p class="stat" id="s-stat"></p>
 <div class="backup"><button type="button" id="save-btn">Sichern</button><label for="load-in">Laden</label><input type="file" id="load-in" accept="application/json,.json"></div>
 <p class="stat">Der Fortschritt bleibt in diesem Browser auf diesem Gerät. Mit „Sichern“ nimmst du ihn mit.</p></div>
@@ -1051,6 +1084,7 @@ HEAR = """
 <div class="h-chips" id="h-scope"></div>
 <div class="h-lab">So klingt es</div>
 <div class="h-row" id="h-lang-row"><span>Sprache</span><div class="h-chips" id="h-lang"></div></div>
+<div class="h-row"><span>Tempo</span><div class="h-chips" id="h-rate"></div></div>
 <div class="h-row"><span>Jeder Satz</span><div class="h-chips" id="h-each"></div></div>
 <div class="h-row"><span>Am Ende</span><div class="h-chips" id="h-loop"></div></div>
 <p class="h-note">Es läuft weiter, wenn der Bildschirm aus ist: Pause, zurück und weiter auch auf dem Sperrbildschirm und am Kopfhörer.</p>
@@ -1115,7 +1149,7 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
         lesson = json.loads(unit["lesson"].read_text(encoding="utf-8-sig"))
         css = css or re.search(r"<style>(.*?)</style>", page, re.S).group(1)
         unit_plan = plan["units"][uid] if audio else None
-        page = write_explanations(page, lesson, course.get("narration", {}).get(uid), unit_plan,
+        page = write_explanations(page, lesson, unit_narration(course, uid) if "more_examples" in course else course.get("narration", {}).get(uid), unit_plan,
                                   course["cache"] if audio and not placeholder_audio else None, prof, ui)
         if audio:
             page = add_audio_buttons(page, lesson, unit_plan, used_german, prof, ui)
@@ -1167,6 +1201,12 @@ def build(course, output, audio=True, bitrate="32k", explain_bitrate="24k", plac
 
     payloads = {}
     used_english = set(first_english) - used_german - used_explain
+    if audio:                                         # every clip a button or a listening order plays gets embedded
+        named = {cid for orders in (sequences, examples, words, grammar, stories) for steps in orders.values()
+                 for step in steps for cid in step[:1] + step[4:5] if cid}
+        named |= {cid for chain in re.findall(r'data-(?:audio|chain)="([^"]*)"', "".join(sections)) for cid in chain.split()}
+        unsent = sorted(named - used_german - used_explain - used_english)
+        require(not unsent, f"played but not embedded ({len(unsent)}): {', '.join(unsent[:3])}{' …' if len(unsent) > 3 else ''}")
     if audio and not placeholder_audio:
         ff = ffmpeg_exe()
         jobs = ([(cid, bitrate) for cid in sorted(used_german)] + [(cid, explain_bitrate) for cid in sorted(used_explain - used_german)]

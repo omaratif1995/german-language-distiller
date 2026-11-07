@@ -94,6 +94,16 @@
   .now-c button,.now button.x{width:40px;height:40px;padding:0;display:grid;place-items:center;background:rgba(255,255,255,.16);color:#ecfdf5}
   .now-c #now-p{background:#ecfdf5;color:#064e3b}
   .now button.x{width:36px;height:36px;font-size:16px}
+  .now button.now-r{min-width:46px;height:36px;padding:0 8px;font-size:13px;background:rgba(255,255,255,.16);color:#ecfdf5}
+  .now-tempo{position:fixed;left:50%;bottom:calc(72px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:31;width:max-content;
+             max-width:calc(100% - 24px);padding:10px 12px 12px;border-radius:16px;background:#0b1220;border:1px solid rgba(255,255,255,.18);
+             box-shadow:0 10px 26px rgba(0,0,0,.5);color:#ecfdf5}
+  .mode-practice .now-tempo{bottom:calc(208px + env(safe-area-inset-bottom))}
+  .now-tempo>span{display:block;font-size:12px;letter-spacing:1px;text-transform:uppercase;opacity:.8;margin-bottom:8px}
+  .now-tempo .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .now-tempo .chips button{font:inherit;font-size:14px;min-height:38px;padding:4px 12px;border-radius:999px;cursor:pointer;color:#fff;
+             background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.22)}
+  .now-tempo .chips button[aria-pressed="true"]{background:#6ee7b7;color:#064e3b;border-color:#6ee7b7;font-weight:700}
   .now svg{width:20px;height:20px;fill:currentColor}
   .now button:focus-visible{outline:2px solid #f2d36b;outline-offset:2px}
   .tip{position:absolute;z-index:40;max-width:min(300px,calc(100% - 16px));padding:8px 11px;border-radius:10px;background:#0b1220;color:#f8fafc;
@@ -146,6 +156,10 @@
   details.say-en summary{cursor:pointer;color:var(--muted);font-size:13.5px;padding:2px 0}
   details.say-en .say{margin-bottom:2px}
   details.say-en .say p{font-size:14.5px}
+  details.more{margin:12px 0 2px;padding-top:8px;border-top:1px dashed var(--line)}
+  details.more>summary{cursor:pointer;color:var(--accent);font-size:14.5px;font-weight:700;padding:4px 0 6px}
+  .ex .use{display:inline-block;font-size:10.5px;font-weight:700;font-style:normal;letter-spacing:.6px;text-transform:uppercase;
+           color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:0 7px;margin-right:6px;vertical-align:2px}
   .mode-practice .lernen,.mode-games .lernen,.mode-listen .lernen{display:none}
   #practice,#games,#listen{display:none}
   .mode-practice #practice,.mode-games #games,.mode-listen #listen{display:block}
@@ -410,6 +424,7 @@
 <div class="group"><div class="lab">Pause nach … Karten</div><div class="chips" id="s-round"></div></div>
 <div class="group"><div class="lab">Modus</div><div class="chips" id="s-mode"></div></div>
 <div class="group"><div class="lab">Ton (Aussprache und Spiele)</div><div class="chips" id="s-auto"></div></div>
+<div class="group" id="s-rate-g"><div class="lab">Tempo (Aussprache)</div><div class="chips" id="s-rate"></div></div>
 <div class="group"><div class="lab">Fortschritt</div><p class="stat" id="s-stat"></p>
 <div class="backup"><button type="button" id="save-btn">Sichern</button><label for="load-in">Laden</label><input type="file" id="load-in" accept="application/json,.json"></div>
 <p class="stat">Der Fortschritt bleibt in diesem Browser auf diesem Gerät. Mit „Sichern“ nimmst du ihn mit.</p></div>
@@ -426,6 +441,7 @@
 <button type="button" class="lp-go" id="lp-go" hidden></button>
 <div class="lp-modes"><button type="button" data-m="all">▶ Ganze Lektion</button><button type="button" data-m="words">▶ Wörter</button><button type="button" data-m="ex">▶ Nur Beispiele</button><button type="button" data-m="gram">▶ Grammatik</button><button type="button" data-m="story">▶ Geschichte</button></div>
 <div class="lp-row" id="lp-en-row"><span>Sprache</span><div class="chips" id="lp-en"></div></div>
+<div class="lp-row"><span>Tempo</span><div class="chips" id="lp-rate"></div></div>
 <div class="lp-row"><span>Jeder Satz</span><div class="chips" id="lp-each"></div></div>
 <div class="lp-row"><span>Am Ende</span><div class="chips" id="lp-loop"></div></div>
 <div class="lp-row"><span>🔊-Taste</span><div class="chips" id="lp-one"></div></div>
@@ -434,7 +450,8 @@
 <button type="button" id="now-b" aria-label="Noch einmal" title="Noch einmal (am Satzanfang: zurück)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zm14 0v14L9 12z"/></svg></button>
 <button type="button" id="now-p" aria-label="Pause" title="Pause"></button>
 <button type="button" id="now-n" aria-label="Nächster Satz" title="Nächster Satz"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
-</div><span class="now-i"><b id="now-t"></b><small id="now-s"></small></span><button type="button" id="now-x">⏹ Stopp</button></div>
+</div><span class="now-i"><b id="now-t"></b><small id="now-s"></small></span><button type="button" class="now-r" id="now-r" aria-label="Tempo" title="Tempo">1×</button><button type="button" id="now-x">⏹ Stopp</button></div>
+<div class="now-tempo" id="now-tempo" hidden><span>Tempo</span><div class="chips" id="now-tempo-c"></div></div>
 <div class="tip" id="tip" hidden></div>
 
 </main>
@@ -461,13 +478,20 @@
     else setTimeout(check,120); })(); }); }
 
   /* ---------------- listening: every run plays as one audio track, so it goes on with the screen off ---------------- */
-  var A=load('listen',{one:0,each:2,loop:1,en:0}); /* one: plays per 🔊 tap (0 = until tapped again); each: plays of every German sentence in a session; loop: start again at the end; en: each word and example's English after it */
+  var A=load('listen',{one:0,each:2,loop:1,en:0,rate:1}); /* one: plays per 🔊 tap (0 = until tapped again); each: plays of every German sentence in a session; loop: start again at the end; en: each word and example's English after it; rate: the speed of every sound */
   var AT=load('listen-at',{});                     /* per unit, where a stopped session goes on: {m: mode, i: step, n: steps, c: first clip}; '*': a course session's, with its list of units and unit u */
   var player=new Audio(), R=null, held=null, lastF=null, lock=null, tipT=null, unlocked=false;
   var RATE=22050, PCM={}, cached=0, SIL={}, decoder=null;      /* clips decoded once, and silences, as small WAV blobs */
   var SILENT='data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQIAAAAAAA==';
   var lp=d.getElementById('lp'), lpGo=d.getElementById('lp-go'), tip=d.getElementById('tip'), nowBar=d.getElementById('now'), nowB=d.getElementById('now-b'),
-      nowP=d.getElementById('now-p'), nowN=d.getElementById('now-n'), nowT=d.getElementById('now-t'), nowS=d.getElementById('now-s'), nowX=d.getElementById('now-x');
+      nowP=d.getElementById('now-p'), nowN=d.getElementById('now-n'), nowT=d.getElementById('now-t'), nowS=d.getElementById('now-s'), nowX=d.getElementById('now-x'),
+      nowR=d.getElementById('now-r'), nowTempo=d.getElementById('now-tempo');
+  /* the speed of every sound: the phone stretches the voice without changing its pitch, and the pauses grow with it */
+  var RATES=[[0.6,'0,6×'],[0.7,'0,7×'],[0.8,'0,8×'],[0.9,'0,9×'],[1,'1×'],[1.2,'1,2×']];
+  function rateNow(){ var v=+A.rate||1; return RATES.some(function(x){ return x[0]===v; })?v:1; }
+  function tempo(){ var v=rateNow(); try{ player.defaultPlaybackRate=v; if(player.playbackRate!==v) player.playbackRate=v; }catch(e){} }
+  try{ player.preservesPitch=player.mozPreservesPitch=player.webkitPreservesPitch=true; }catch(e){}
+  tempo();
   var LABEL={all:'Ganze Lektion',words:'Wörter',ex:'Nur Beispiele',gram:'Grammatik',story:'Geschichte'};
   var ICON={play:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
             pause:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zm6.5 0H17v14h-3.5z"/></svg>'};
@@ -476,7 +500,9 @@
   function gapNext(dur,f){ return 300+f*(gapAgain(dur)+400); }         /* f: the step's pause factor; 1.5–2 s after an example */
   function stepsOf(m){ return m==='ex'?EXS:m==='story'?STO:m==='words'?WRD:m==='gram'?GRM:SEQ; }
   function mark(el,on){ if(el) el.classList.toggle('is-playing',on); }
-  function follow(el,stay){ if(lastF) lastF.classList.remove('follow'); lastF=el||null; if(!el) return; el.classList.add('follow'); if(stay) return;
+  function follow(el,stay){ if(lastF) lastF.classList.remove('follow'); lastF=el||null; if(!el) return; el.classList.add('follow');
+    var fold=el.closest&&el.closest('details.more'); if(fold&&!fold.open) fold.open=true;   /* a grammar point's extra examples open as they are heard */
+    if(stay) return;
     var b=el.getBoundingClientRect(); if(b.top<90||b.bottom>innerHeight-90) el.scrollIntoView({block:'center',behavior:'smooth'}); }
   function wake(on){ try{ if(on&&!lock&&navigator.wakeLock) navigator.wakeLock.request('screen').then(function(l){ if(R) lock=l; else l.release(); },function(){});
     else if(!on&&lock){ lock.release(); lock=null; } }catch(e){} }
@@ -541,12 +567,12 @@
   /* one clip now (a card's word, a game's sentence); while the page is still loading its sound, it plays once that is
      there, unless something else was asked for in the meantime */
   var asked=0;
-  function sound(data){ player.loop=false; player.src='data:audio/mpeg;base64,'+data; go(); }
+  function sound(data){ player.loop=false; player.src='data:audio/mpeg;base64,'+data; tempo(); go(); }
   function clip(id){ var data=need(id), mine=++asked; if(data){ sound(data); return true; }
     if(!id||d.readyState!=='loading') return false;
     whenAudio([id]).then(function(){ var later=need(id); if(mine===asked&&!R&&later) sound(later); }); return true; }
-  function attach(r,play){ player.loop=!r.o.laps; player.src=r.t.url; r.last=r.pos;
-    player.onloadedmetadata=function(){ player.onloadedmetadata=null; if(R!==r) return; player.currentTime=r.pos; if(play&&!r.paused) go(); }; }
+  function attach(r,play){ player.loop=!r.o.laps; player.src=r.t.url; tempo(); r.last=r.pos;
+    player.onloadedmetadata=function(){ player.onloadedmetadata=null; if(R!==r) return; player.currentTime=r.pos; tempo(); if(play&&!r.paused) go(); }; }
   function prepare(r,from){ r.ready=false; r.from=from; showBar();
     var pre=r.o.pre; r.o.pre=null;                                             /* a course's next unit, built while the last one played */
     (pre?Promise.resolve(pre):track(r)).then(function(t){ if(R!==r&&held!==r){ if(t) URL.revokeObjectURL(t.url); return; }
@@ -567,7 +593,7 @@
     if(r.o.mode){ if(r.done){ if(!r.o.course) delete AT[r.o.unit]; } else if(r.ready) remember(r,t); save('listen-at',AT); }
     if(r.next){ if(r.next.t) URL.revokeObjectURL(r.next.t.url); r.next=null; }
     if(r.t) URL.revokeObjectURL(r.t.url); r.t=null; r.ready=false; }
-  function stopAll(){ asked++; if(R) drop(R); if(held) drop(held); R=held=null; follow(null); wake(false); if(nowBar) nowBar.hidden=true; heard(null); listening(); }
+  function stopAll(){ asked++; if(R) drop(R); if(held) drop(held); R=held=null; follow(null); wake(false); if(nowBar) nowBar.hidden=true; if(nowTempo) nowTempo.hidden=true; heard(null); listening(); }
   /* items: [clip id, pause factor, element (or its id) to highlight, repeatable, English clip]; o: {btn, each, laps (0 = endless),
      follow, stop, label, en (with English)}, for a session also unit, mode and at (its first step), and for a course session
      course ({list: its units}), where (the unit's name for the bar) and then() ([items, o] of the next unit, or null) */
@@ -596,8 +622,8 @@
     if(r.o.where) s.push(r.o.where);
     if(many) s.push((r.cur<0?r.from:r.cur)+1+' / '+n);
     if(!r.ready) s.push('wird vorbereitet …');
-    else{ if(many&&(r.o.each||1)>1) s.push('je '+r.o.each+'×');
-      if(r.o.laps!==1) s.push(r.o.laps?(r.lap+' / '+r.o.laps):(many?'⟳ Runde '+r.lap:'⟳ '+r.lap+'×')); }
+    else if(r.o.laps!==1) s.push(r.o.laps?(r.lap+' / '+r.o.laps):(many?'⟳ Runde '+r.lap:'⟳ '+r.lap+'×'));
+    if(nowR) nowR.textContent=RATES.filter(function(x){ return x[0]===rateNow(); })[0][1];   /* the speed, one tap to change it */
     nowT.textContent=r.o.label||'Wiedergabe'; nowS.textContent=s.join(' · ');
     nowX.textContent=many?'✕':'⏹ Stopp'; nowX.classList.toggle('x',many); nowX.setAttribute('aria-label',many?'Beenden':'Stopp'); }
   function pauseOrPlay(){ var r=R; if(!r) return;
@@ -630,7 +656,7 @@
   function chipRow(id,items,value,set){ var box=d.getElementById(id); if(!box) return; box.innerHTML='';
     items.forEach(function(it){ var b=d.createElement('button'); b.type='button'; b.textContent=it[1]; b.setAttribute('aria-pressed',String(it[0]===value));
       b.addEventListener('click',function(){ set(it[0]); save('listen',A); liveSettings(); panel(); listening(); }); box.appendChild(b); }); }
-  function liveSettings(){ [R,held].forEach(function(r){ if(!r||!r.o.mode) return;
+  function liveSettings(){ tempo(); [R,held].forEach(function(r){ if(!r||!r.o.mode) return;
       var laps=r.o.course?1:A.loop?0:1, en=!!A.en;                               /* a course plays its units once each, and loops as a whole */
       if(r.next){ if(r.next.t) URL.revokeObjectURL(r.next.t.url); r.next=null; }   /* the next unit is built again, the new way */
       if(r.o.each===A.each&&r.o.laps===laps&&!!r.o.en===en) return;
@@ -642,6 +668,7 @@
     chipRow('lp-loop',[[0,'Einmal'],[1,'⟳ Endlos']],A.loop,function(v){A.loop=v;});
     chipRow('lp-one',[[1,'1×'],[3,'3×'],[0,'∞ bis Stopp']],A.one,function(v){A.one=v;});
     chipRow('lp-en',EN_CHIPS,A.en?1:0,function(v){A.en=v;}); d.getElementById('lp-en-row').hidden=!ENG;
+    chipRow('lp-rate',RATES,rateNow(),function(v){A.rate=v;});
     var u=lp.getAttribute('data-unit'), at=AT[u], steps=at&&stepsOf(at.m)[u], busy=[R,held].some(function(r){ return r&&r.o.mode&&r.o.unit===u; });
     ['words','gram','story'].forEach(function(m){ var s=stepsOf(m)[u]; lp.querySelector('[data-m="'+m+'"]').hidden=!(s&&s.length); });
     lpGo.hidden=busy||!(steps&&steps.length===at.n&&steps[0][0]===at.c&&at.i>0&&at.i<steps.length);    /* a stopped session goes on where it stopped */
@@ -663,6 +690,9 @@
   nowB.addEventListener('click',function(){ skip(-1); });
   nowN.addEventListener('click',function(){ skip(1); });
   nowP.addEventListener('click',pauseOrPlay); nowX.addEventListener('click',endRun);
+  nowR.addEventListener('click',function(){ nowTempo.hidden=!nowTempo.hidden; if(!nowTempo.hidden) chipRow('now-tempo-c',RATES,rateNow(),function(v){A.rate=v;}); });
+  nowTempo.addEventListener('click',function(e){ if(e.target.closest('button')) setTimeout(function(){ nowTempo.hidden=true; },220); });   /* chosen: it closes */
+  d.addEventListener('click',function(e){ if(!nowTempo.hidden&&!e.target.closest('#now-tempo,#now-r')) nowTempo.hidden=true; });
   d.addEventListener('click',function(e){
     var b=e.target.closest('.speak-button,.explain-button,.listen-open,.story-play,.ss[data-audio],.lw'); if(!b) return;
     if(b.classList.contains('lw')){ gloss(b); return; }
@@ -742,6 +772,7 @@
     if(!scopes.some(function(s){ return s[0]===A.scope; })) A.scope='all';
     chipRow('h-scope',scopes,A.scope,function(v){A.scope=v;});
     chipRow('h-lang',EN_CHIPS,A.en?1:0,function(v){A.en=v;}); d.getElementById('h-lang-row').hidden=!ENG;
+    chipRow('h-rate',RATES,rateNow(),function(v){A.rate=v;});
     chipRow('h-each',[[1,'1×'],[2,'2×'],[3,'3×'],[5,'5×']],A.each,function(v){A.each=v;});
     chipRow('h-loop',[[0,'Einmal'],[1,'⟳ Endlos']],A.loop,function(v){A.loop=v;});
     var at=AT['*'], st=at&&at.list&&at.list.indexOf(at.u)>=0?unitSteps(at.u,at.m):[];
@@ -755,7 +786,7 @@
   function heard(r){ if(!hNow) return; if(!r||!r.o.course){ hNow.hidden=true; return; }
     var it=r.items[r.cur>=0?r.cur:r.from]||[], el=typeof it[2]==='string'?d.getElementById(it[2]):null, de='', en='', part, e=d.getElementById('h-en');
     if(!el){ part=d.querySelector('section.unit[id="'+r.o.unit+'"] h1'); de=part?part.textContent:''; }
-    else if(el.classList.contains('ex')){ de=textOf(el,'.tr'); part=el.querySelector('.tr'); en=part?part.textContent.replace(/^\s*—\s*/,''):''; }
+    else if(el.classList.contains('ex')){ de=textOf(el,'.tr,.use'); part=el.querySelector('.tr'); en=part?part.textContent.replace(/^\s*—\s*/,''):''; }
     else if(el.classList.contains('voc')){ part=el.querySelector('.top .de'); de=part?textOf(part):''; part=el.querySelector('.top .en'); en=part?part.textContent:''; }
     else if(el.classList.contains('phrase')){ part=el.querySelector('.head'); de=part?textOf(part):''; part=el.querySelector('.meaning'); en=part?part.textContent:''; }
     else if(el.classList.contains('rule')||el.classList.contains('story')){ part=el.querySelector('h3'); de=part?textOf(part):''; }
@@ -896,6 +927,8 @@
     chips('s-round',[[10,'10'],[20,'20'],[0,'ohne Pause']],[S.round],function(v){ S.round=v; persist(); renderSettings(); });
     chips('s-mode',[[false,'Tagesplan'],[true,'Durchblättern']],[S.browse],function(v){ S.browse=v; persist(); start(); });
     chips('s-auto',[[true,'Ton an'],[false,'Ton aus']],[S.auto],function(v){ S.auto=v; persist(); renderSettings(); });
+    chipRow('s-rate',RATES,rateNow(),function(v){ A.rate=v; setTimeout(renderSettings); });   /* the same speed as in Hören and the panel */
+    d.getElementById('s-rate-g').hidden=!Object.keys(IDX).length;
     var stat=d.getElementById('s-stat'); stat.innerHTML='';             /* every lesson, one line per book */
     (CFG.groups||[[null,ORDER]]).forEach(function(g){ var n={neu:0,lern:0,sicher:0,fest:0}, line=d.createElement('span');
       CARDS.forEach(function(c){ if(g[1].indexOf(c.u)<0||S.kinds.indexOf(c.k)<0) return; var s=state[c.id];

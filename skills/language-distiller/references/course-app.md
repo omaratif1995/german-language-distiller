@@ -11,6 +11,7 @@ Write one `course.json` (usually in `_work/`). Paths are relative to the file.
   "title": "Deutsch B1.1",
   "subtitle": "Lektion 1–12 · Wortschatz · Grammatik · Redemittel · Geschichte",
   "narration": "narration.json",
+  "more_examples": "more_examples.json",
   "voices": {"de": "de-DE-KatjaNeural", "en": "en-US-AvaNeural"},
   "cache": "audio",
   "episodes_dir": "../Audio",
@@ -24,7 +25,7 @@ Write one `course.json` (usually in `_work/`). Paths are relative to the file.
 
 List units in course order. For two books in one course, give every unit a `group`, the book's short name (`"group": "B1.1"`), and keep each book's units together: the lesson picker then lists the books as headings, and Üben gets one chip per book. Use the newest reviewed sheet of each unit; drafts are refused. `new_per_day` sets the trainer's default for new cards per day (20 suits most learners; 25 suits a near exam date). `voices` and `narration` are optional; the voices shown are the defaults. Other keys are refused, so a misspelt key (`episodes_out` for `episodes_dir`) cannot silently fall back to a default folder.
 
-**Name the course yourself, never after the source.** The title, subtitle, unit labels and lesson titles are spoken in the episodes and shown in the app. `private_terms` lists names that must never appear in the app or the episode names: the course book's distinctive title words, its publisher, the teacher. The tools refuse to write output that contains one.
+**Name the course yourself, never after the source.** The title, subtitle, unit labels and lesson titles are spoken in the episodes and shown in the app. `private_terms` lists names that must never appear in the app or the episode names: the course book's distinctive title words, its publisher, the teacher. The tools refuse to write output that contains one. A term counts as a whole word in any case, in all the text the app shows, translations included: when a name is also an ordinary word (Rose and *rose*), reword the ordinary word.
 
 ## Pronunciation: the target language is always spoken by its own voice
 
@@ -83,6 +84,26 @@ Without a narrator voice in the profile, `de` is read by the target voice and th
 
 The narration clips are **timed**: `synth` asks the voice service for the time of every word and keeps it beside the clip (`<cache>/clips/<id>.words.json`); in a clip joined from runs, each run's times move by the silence trimmed from it. The app matches the written sentences to the spoken words letter by letter, so a symbol read out, or a word said differently, does not shift a sentence. A clip made before timings existed is made again.
 
+## Extra grammar examples (more_examples.json)
+
+A grammar card's own examples show the rule two or three times. For more practice, write `more_examples.json` next to `course.json` and name it there (`"more_examples": "more_examples.json"`). It is keyed by unit id and grammar id, and each item has exactly these four keys:
+
+```json
+{"L01": {"g01": [
+  {"use": "daily", "de": "Kannst du mir helfen, den Tisch zu tragen?", "en": "Can you help me carry the table?", "targets": ["zu tragen"]},
+  {"use": "writing", "de": "Ich bitte Sie, mir die Rechnung noch einmal zu schicken.", "en": "Please send me the invoice again.", "targets": ["zu schicken"]},
+  {"use": "exam", "de": "Es ist nicht erlaubt, im Museum zu fotografieren.", "en": "Taking photos in the museum is not allowed.", "targets": ["zu fotografieren"]}
+]}}
+```
+
+- **`use`** says where the sentence lives: `daily` (talk and messages), `writing` (e-mails, letters, posts, a CV) or `exam` (the kind of text an exam reads or asks for: notices, announcements, articles, formal letters). The app shows it as **Alltag**, **Schreiben** or **Prüfung**.
+- **`targets`** are exact whole words or phrases of `de`, as for any example. Every occurrence is highlighted, so choose ones that occur once in the sentence.
+- **Six per point** work well, two for each use: different situations, different words, and different forms (a question, the clause first or second, another person or tense). Write them yourself, check them for six-word runs shared with the source like any example, and never repeat a card's sentence.
+
+`plan`, `synth` and the app build refuse unknown unit or grammar ids, other keys or uses, and targets that are absent or inside another word.
+
+In the app the extras wait folded under the card's own examples, as **Mehr Beispiele (6)**, each with its tag, 🔊 and translation. They are read by the examples' voice, not the narrator. *Ganze Lektion*, *Beispiele* and *Grammatik* (in the 🎧 panel and in Hören) play them after the card's examples, with their English under *Deutsch + Englisch*, and open the fold when they get there. The MP3 episodes leave them out, so the episodes stay as long as they were.
+
 ## Audio commands
 
 `course_audio.py plan` works offline. It writes `<cache>/plan.json` with each unit's listening order, the German controls (headwords, examples, phrases, variants, story sentences), the grammar explanation chain and the episode announcements, and reports how many clips are not yet in `<cache>/clips`. Clip ids depend on the voices, the spoken runs and their pauses. Unchanged clips are never synthesized twice, and runs shared by several clips are fetched once.
@@ -104,7 +125,7 @@ Requirements: `pip install edge-tts pyspellchecker imageio-ffmpeg` (or a system 
 
 ## App
 
-`build_course_app.py --course course.json --output <Name>_Studienpaket_vN.html` (or `--no-audio`; `--no-english` leaves out the English meanings and translations, a quarter less audio).
+`build_course_app.py --course course.json --output <Name>_Studienpaket_vN.html` (or `--no-audio`; `--no-english` leaves out the English meanings and translations, a quarter less audio). The build stops before writing if a 🔊 button or a listening order would play a clip that the app does not embed.
 
 The app has four tabs: **Lernen**, **Hören**, **Üben** and **Spielen** (without audio there is no Hören).
 
@@ -112,11 +133,13 @@ The app has four tabs: **Lernen**, **Hören**, **Üben** and **Spielen** (withou
 - All reviewed sheets in course order, a unit picker with ‹ › (by book, when units have a `group`), and a search over all cards that shows each hit under its unit and subheading, without the empty ones.
 - 🔊 on every German headword, example, phrase and variant. **A tap repeats**: by default the clip plays again and again, with a short pause, until the learner taps it again or presses ⏹. The listening panel switches this to 1× or 3×.
 - `🔊 Erklärung` on each grammar point plays its spoken explanation once. With narration, the card shows it written out, and the sentence being spoken lights up (also during *Ganze Lektion*); **EN** plays the English one and opens it under «Auf Englisch».
+- **Mehr Beispiele (6)** under a grammar card's own examples, with `more_examples.json`: folded, so the card stays short; open, each extra example shows its tag (*Alltag*, *Schreiben*, *Prüfung*), 🔊 and translation, and its targets are marked like any example's.
 - The **Geschichte** at the end of each unit: a **🔊 Ganze Geschichte** button on the story header to play the whole story straight through, a 🔊 per paragraph, and a tap on any sentence repeats that sentence. A tap on an underlined word shows its meaning and speaks it.
 - **🎧 Anhören** opens a small panel in the unit's header:
   - **▶ Weiter** (once a session was stopped): goes on where it stopped;
   - five ways to listen: **Ganze Lektion** (German vocabulary and expressions, grammar explained, then the story), **Wörter** (the words and the Redemittel), **Nur Beispiele** (only the German example sentences), **Grammatik** (each explanation, then its examples) and **Geschichte**;
   - **Sprache Nur Deutsch · Deutsch + Englisch**: with English, every word or phrase is followed by its meaning and every example by its translation, once, after the German plays (explanations and stories stay German);
+  - **Tempo 0,6× · 0,7× · 0,8× · 0,9× · 1× · 1,2×**: how fast the voices speak, with the pitch kept; one tempo serves the whole app (every 🔊, the sessions, Hören, Üben) and is remembered. While a session plays, the bar's tempo button (*1×*) changes it at once, and the highlighted sentence stays in step;
   - **Jeder Satz 1× · 2× · 3× · 5×**: how often each German sentence is played before the next one;
   - **Am Ende Einmal · ⟳ Endlos**: stop at the end, or start the unit again;
   - **🔊-Taste 1× · 3× · ∞**: what a single 🔊 tap does.
@@ -128,7 +151,7 @@ The app has four tabs: **Lernen**, **Hören**, **Üben** and **Spielen** (withou
 **Hören**: the course to listen to, for the commute or a walk.
 - **Was möchtest du hören?** Five tiles: **Alles** (each unit as in *Ganze Lektion*), **Wörter**, **Beispiele**, **Grammatik** and **Geschichten**. A tap starts; a tap on the one playing stops it.
 - **Aus welchen Lektionen?** *Nur Lektion 16*, *Ab Lektion 16* (to the end of the course; the lesson is the one in the picker), one chip per book when units have a `group`, or *Alle Lektionen*.
-- **So klingt es:** the same *Sprache*, *Jeder Satz* and *Am Ende* as the panel, shared with it; *⟳ Endlos* starts the whole choice again.
+- **So klingt es:** the same *Sprache*, *Tempo*, *Jeder Satz* and *Am Ende* as the panel, shared with it; *⟳ Endlos* starts the whole choice again.
 - Unit after unit, each opening with its spoken name. Each unit is one track, as in the panel, and the next one is built while the last plays, so it goes on at once, also with the screen off; the bar names the unit (*Lektion 14 · 3 / 57*). A card at the top shows what is heard, big: the sentence or word, and its English when the learner listens with English.
 - **▶ Weiter** goes on where a stopped session stopped, across units. Lernen and Hören share a running session: in Lernen it shows the unit being heard, highlights the card and lights the spoken sentence; choosing another lesson does not stop it. Üben and Spielen stop it, since they make their own sounds.
 
@@ -141,7 +164,7 @@ The app has four tabs: **Lernen**, **Hören**, **Üben** and **Spielen** (withou
 - A double tap never grades the next card.
 - Rounds of 10 cards with a short break screen. A daily summary offers "+10 neue Karten". The progress bar and streak survive reloads.
 - Schedule: new cards from the chosen units, in course order up to the daily limit, interleaved with the due reviews of every unit, so choosing units (a new book, one lesson before a test) never pauses what the learner already practises. "Gewusst" moves a card through the intervals 1 → 3 → 7 → 14 → 30 → 60 days. "Nochmal" brings it back after three cards and restarts its interval.
-- Settings live in a closed panel: units (one chip per book first, when units have a `group`), parts, direction, new cards per day, round size, browse mode, sound and the progress, counted over every unit, one line per book.
+- Settings live in a closed panel: units (one chip per book first, when units have a `group`), parts, direction, new cards per day, round size, browse mode, sound, *Tempo (Aussprache)* (the app's one tempo, with audio only) and the progress, counted over every unit, one line per book.
 - **Sichern** saves the progress (cards, streak, game records) to a file. **Laden** adds a file's progress to the progress here: per card the state further on wins, per game the better result, and two streaks that touch become one (12 days up to yesterday in one app and today in the other: 13). So the backups of two book apps both go into one course app, nothing here is lost, and loading a file twice changes nothing. Cards the app does not have are left out.
 
 **Spielen**: for days without motivation. Five short games per unit, made automatically from the unit's reviewed cards, so they never show anything the sheet does not teach and never show wrong German. Every round has exactly one right answer, and the build checks that:
@@ -182,6 +205,6 @@ Measured with headless Chrome at 6× CPU slowdown, about a mid-range phone, on t
    - swipes grade in both directions;
    - the round break and the daily summary appear;
    - progress survives a reload, and *Laden* of a *Sichern* file adds to it (a second *Laden* of the same file changes nothing).
-4. Check the listening: a 🔊 tap repeats until tapped again; the panel starts all three modes; the bottom bar stops them. Listen to one mixed clip: the German words in it must sound German. Test with the sound muted when other people are around.
+4. Check the listening: a 🔊 tap repeats until tapped again; the panel starts all three modes; the bottom bar stops them; the bar's tempo button slows a running session at once and the highlighted sentence stays in step; *Grammatik* reaches the extra examples and opens their fold. Listen to one mixed clip: the German words in it must sound German. Test with the sound muted when other people are around.
 5. Play one round of each game to its end screen, with one mistake, and play its *Fehler üben* round; or run `scripts/check_games.js`.
 6. Fully decode one MP3 episode with ffmpeg, so that `-v error` prints nothing.
