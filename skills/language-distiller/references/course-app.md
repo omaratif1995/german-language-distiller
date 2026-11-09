@@ -123,6 +123,17 @@ After every German teaching item there is a pause about as long as the clip, so 
 
 Requirements: `pip install edge-tts pyspellchecker imageio-ffmpeg` (or a system ffmpeg).
 
+## Translation languages
+
+English is the lesson's own gloss language. Any other language with a profile in `languages/` (Arabic, `ar`, is the first) can be added as a translation language, one choice for the whole app: the app's own words stay German, only the translations change.
+
+1. In `course.json`: `"translations": {"ar": "translations_ar.json"}`. The file holds, per unit, the translation of **every English text** of the unit: `{"L01": {"v01": {"gloss", "forms"?, "ex": [...]}, "g01": {"ex", "more"?, "explain"?}, "e01": {"gloss", "when", "register"?, "variants"?, "ex"}, "story": [...]}}`. `course_audio.check_translations` refuses a gap: every unit and card is covered, counts equal the English ones, `explain` exists iff the card has an English-backup narration, `more` iff it has `more_examples`, `variants` iff the record has variants (their usage text only), and the story has one entry per paragraph.
+2. **German inside a translation is marked «…»**, and nothing with Latin letters stands outside the marks (names of tenses, abbreviations such as «PDF», lesson references). The German voice speaks what is inside the marks, the translation's own voice the rest (a profile's `voice`; Arabic `ar-SA-ZariyahNeural`; the narrator speaks the explanations, a little slower).
+3. Names of people and places are written the way the learner reads them in their own script, once, the same everywhere (keep a small glossary per course).
+4. `course_audio.py synth --confirm-external-tts` sends the translations' texts to the hosted voice service, like any other text: only with the learner's approval.
+5. In the built app every English text carries `data-tl="en"`, and its translation follows as an element of the same class with `data-tl`, `lang` and `dir`; `html[data-tl]` shows the chosen language only. A right-to-left language flips cards, games and listening line, keeps German «…» runs left-to-right (`<bdi dir="ltr">`) and drops italics. The first start asks which language (a card); afterwards a pill in Lernen and Spielen, and rows in Hören and Üben, change it. The games carry the same texts per language (`GT`), laid over the English ones. Steps of a listening session carry the translation clip next to the English one.
+6. `inspect_games.py <app> --language ar` plays every game in that language.
+
 ## App
 
 `build_course_app.py --course course.json --output <Name>_Studienpaket_vN.html` (or `--no-audio`; `--no-english` leaves out the English meanings and translations, a quarter less audio; `--audio-format opus` makes the sound about a third smaller for browsers that decode Opus: see *Size and performance*). The build stops before writing if a 🔊 button or a listening order would play a clip that the app does not embed.
@@ -138,9 +149,9 @@ The app has four tabs: **Lernen**, **Hören**, **Üben** and **Spielen** (withou
 - **🎧 Anhören** opens a small panel in the unit's header:
   - **▶ Weiter** (once a session was stopped): goes on where it stopped;
   - five ways to listen: **Ganze Lektion** (German vocabulary and expressions, grammar explained, then the story), **Wörter** (the words and the Redemittel), **Nur Beispiele** (only the German example sentences), **Grammatik** (each explanation, then its examples) and **Geschichte**;
-  - **Sprache Nur Deutsch · Deutsch + Englisch**: with English, every word or phrase is followed by its meaning and every example by its translation, once, after the German plays (explanations and stories stay German);
+  - **Übersetzung** (with more than one translation language: see *Translation languages*) a language segment, **👁 anzeigen** (the translation is shown beside every sentence, whether it is spoken or not) and **🔊 vorlesen** (every word or phrase is followed by its meaning and every example by its translation, once, after the German plays; explanations and stories stay German). Hear German only and still read the translation: 👁 on, 🔊 off;
   - **Tempo 0,6× · 0,7× · 0,8× · 0,9× · 1× · 1,2×**: how fast the voices speak, with the pitch kept; one tempo serves the whole app (every 🔊, the sessions, Hören, Üben) and is remembered. While a session plays, the bar's tempo button (*1×*) changes it at once, and the highlighted sentence stays in step;
-  - **Jeder Satz 1× · 2× · 3× · 5×**: how often each German sentence is played before the next one;
+  - **Wiederholen** a stepper − n + from 1 to 99 (no fixed list of choices: the learner sets whatever number they like): how often each German sentence is played before the next one;
   - **Am Ende Einmal · ⟳ Endlos**: stop at the end, or start the unit again;
   - **🔊-Taste 1× · 3× · ∞**: what a single 🔊 tap does.
 

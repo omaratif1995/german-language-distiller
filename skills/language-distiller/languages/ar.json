@@ -2,6 +2,7 @@
   "code": "ar",
   "name": "Arabic",
   "native": "العربية",
+  "short": "عربي",
   "voice": "ar-SA-ZariyahNeural",
   "direction": "rtl",
   "sections": {

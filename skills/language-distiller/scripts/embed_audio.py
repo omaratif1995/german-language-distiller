@@ -48,6 +48,9 @@ def speakable(value, lang="de"):
 Clip = speech.Clip
 
 
+TRANSLATION_PACE = "-10%"     # a grammar explanation in a translation language: a little slower, like the others
+
+
 def voices_of(voices):
     """Accept a {"de": ..., "en": ...} mapping, or one voice name for both (tests, old callers)."""
     if voices is None:
@@ -218,8 +221,10 @@ def build_plan(lesson, voices=None, narration=None):
     return clips, sequence, controls, explain, explain_en
 
 
-def lesson_plan(lesson, voices=None, narration=None):
-    """build_plan plus what players need: title and section clips, story paragraphs, English example clips."""
+def lesson_plan(lesson, voices=None, narration=None, translations=None):
+    """build_plan plus what players need: title and section clips, story paragraphs, English example clips, and for
+    every translation language ({code: the unit's part of its translations file}) the same clips in that language
+    ("support": {code: {control: clip}}) and its spoken grammar explanations ("explain_tr": {code: {gid: [clip]}})."""
     voices = voices_of(voices)
     clips, sequence, controls, explain, explain_en = build_plan(lesson, voices, narration)
 
@@ -237,10 +242,33 @@ def lesson_plan(lesson, voices=None, narration=None):
         told = (narration or {}).get(record["id"])
         for index, example in enumerate(told.get("more", []) if isinstance(told, dict) else []):
             english[f'{record["id"]}-more-{index}'] = add(example["en"], "en")
+    support, explain_tr = {}, {}
+    for code, unit in sorted((translations or {}).items()):
+        if not unit:
+            continue
+        said, told = {}, {}
+        teacher = {**voices, "de": voices.get("narrator") or voices["de"]}   # its German words: the narrator's voice
+
+        def tadd(text, who=voices, rate="", timed=False, code=code):
+            clip = speech.make_clip(text, f"tr:{code}", who, rate, timed)
+            clips.setdefault(clip.clip_id, clip)
+            return clip.clip_id
+        for section in ("vocabulary", "grammar", "redemittel"):
+            for record in lesson[section]:
+                item = unit.get(record["id"]) or {}
+                if item.get("gloss"):
+                    said[f'{record["id"]}-head'] = tadd(item["gloss"])
+                for index, text in enumerate(item.get("ex", [])):
+                    said[f'{record["id"]}-ex-{index}'] = tadd(text)
+                for index, text in enumerate(item.get("more", [])):
+                    said[f'{record["id"]}-more-{index}'] = tadd(text)
+                if item.get("explain"):
+                    told[record["id"]] = [tadd(explanation_speech(item["explain"], True), teacher, TRANSLATION_PACE, True)]
+        support[code], explain_tr[code] = said, told
     plan = {"title": add(lesson["title"]),
             "sections": {key: add(name) for key, name in sections_of(lesson).items() if key != "story" or lesson.get("story")},
             "sequence": sequence, "controls": controls, "explain": explain, "explain_en": explain_en, "story": [],
-            "english": english}
+            "english": english, "support": support, "explain_tr": explain_tr}
     number = 0
     for paragraph in (lesson.get("story") or {}).get("paragraphs", []):
         ids = []
@@ -252,14 +280,17 @@ def lesson_plan(lesson, voices=None, narration=None):
 
 
 # ---------------------------------------------------------------- listening orders ---
-# Each step is [clip id, pause factor, id of the element to highlight, repeatable, English clip id (optional)]. The pause
+# Each step is [clip id, pause factor, id of the element to highlight, repeatable, then its translation clip in English
+# and in each translation language of the plan, in that order (0 where there is none; trailing ones left out)]. The pause
 # before the next step grows with the factor and the clip's length, to about 2 s after an example (LISTEN_JS: after); a
 # repeatable (German) step is played as often as the learner chose, with a shorter pause between the plays (again), and
-# then, if the learner listens with English, its English meaning once.
+# then, if the learner listens with a translation, its meaning in the chosen language once.
 def german_step(plan, key, factor, spot):
-    """A German word, phrase or example that repeats, with its English meaning or translation when the plan has one."""
-    english = plan.get("english", {}).get(key)
-    return [plan["controls"][key], factor, spot, 1] + ([english] if english else [])
+    """A German word, phrase or example that repeats, with its meaning or translation in every language the plan has."""
+    said = [plan.get("english", {}).get(key) or 0] + [clips.get(key) or 0 for _, clips in sorted(plan.get("support", {}).items())]
+    while said and not said[-1]:
+        said.pop()
+    return [plan["controls"][key], factor, spot, 1] + said
 
 
 def listening_order(prefix, lesson, plan):
@@ -416,16 +447,30 @@ AUDIO_CSS = r"""
   .follow{outline:2px solid var(--yellow);outline-offset:3px;border-radius:10px}
   .lp{margin:12px 0 4px;padding:12px;border:1px solid rgba(255,255,255,.2);border-radius:14px;background:rgba(15,23,42,.72)}
   .lp-modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:10px}
-  .lp-modes button{font:inherit;font-size:15px;font-weight:700;min-height:46px;border-radius:12px;cursor:pointer;color:#1a1030;background:var(--accent2);border:0}
-  .lp-modes button[data-m="ex"]{background:#f2d36b}
-  .lp-modes button[data-m="story"]{background:#6ee7b7}
-  .lp-modes button[data-m="words"]{background:#93c5fd}
-  .lp-modes button[data-m="gram"]{background:#f9a8d4}
-  .lp-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:7px 0 0}
-  .lp-row>span{flex:0 0 92px;font-size:12.5px;color:#dbe2ea;letter-spacing:.3px}
-  .lp-row .chips{display:flex;gap:6px;flex-wrap:wrap}
-  .lp-row .chips button{font:inherit;font-size:13.5px;min-height:34px;padding:4px 11px;border-radius:999px;cursor:pointer;color:#fff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.22)}
-  .lp-row .chips button[aria-pressed="true"]{background:#f2d36b;color:#1a1030;border-color:#f2d36b;font-weight:700}
+  .lp-modes button{font:inherit;font-size:14.5px;font-weight:700;min-height:46px;padding:6px 12px;border-radius:12px;cursor:pointer;color:#f8fafc;
+       background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.2);text-align:left;display:flex;align-items:center;gap:8px}
+  .lp-modes button[data-m="all"]{grid-column:1 / -1;background:#0f766e;border-color:#0f766e}
+  .lp-modes button.is-playing{background:#0f766e;border-color:#6ee7b7}
+  .sets{display:flex;flex-direction:column}
+  .set-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:46px;padding:4px 0;border-top:1px solid rgba(255,255,255,.1)}
+  .set-row:first-child{border-top:0}
+  .set-row.sub{border-top:0;margin-top:-6px;min-height:0;padding-bottom:8px}
+  .set-l{flex:0 0 auto;font-size:13.5px;color:#cbd5e1}
+  .set-c{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;margin-left:auto}
+  .seg{display:inline-flex;border:1px solid rgba(255,255,255,.22);border-radius:999px;overflow:hidden}
+  .seg button{font:inherit;font-size:13.5px;min-height:36px;min-width:44px;padding:4px 12px;border:0;background:transparent;color:#e2e8f0;cursor:pointer}
+  .seg button+button{border-left:1px solid rgba(255,255,255,.18)}
+  .seg button[aria-pressed="true"]{background:#f2d36b;color:#1a1030;font-weight:700}
+  .flip{font:inherit;font-size:13.5px;min-height:36px;padding:4px 12px;border-radius:999px;cursor:pointer;color:#e2e8f0;
+       background:transparent;border:1px solid rgba(255,255,255,.22)}
+  .flip[aria-pressed="true"]{background:#f2d36b;color:#1a1030;border-color:#f2d36b;font-weight:700}
+  .stp{display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.22);border-radius:999px;overflow:hidden}
+  .stp button{font:inherit;font-size:19px;line-height:1;width:42px;min-height:38px;border:0;background:transparent;color:#f8fafc;cursor:pointer}
+  .stp button:disabled{opacity:.3;cursor:default}
+  .stp input,.stp output{font:inherit;font-size:15px;font-weight:700;width:3.6em;text-align:center;border:0;background:transparent;color:#f8fafc;
+       padding:0;-moz-appearance:textfield;appearance:textfield}
+  .stp input::-webkit-outer-spin-button,.stp input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .stp input:focus{outline:2px solid #f2d36b;outline-offset:-2px;border-radius:6px}
   .lp-go{display:block;width:100%;margin:0 0 8px;font:inherit;font-size:15px;font-weight:700;min-height:46px;border-radius:12px;cursor:pointer;color:#064e3b;background:#ecfdf5;border:0}
   .now{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:8px;
        width:max-content;max-width:calc(100% - 24px);padding:6px 6px 6px 8px;border-radius:999px;background:#0f766e;color:#ecfdf5;box-shadow:0 8px 24px rgba(0,0,0,.45);font-size:14px}
@@ -460,12 +505,8 @@ AUDIO_CSS = r"""
 
 LISTEN_HTML = """<div class="lp" id="lp" hidden data-unit="">
 <button type="button" class="lp-go" id="lp-go" hidden></button>
-<div class="lp-modes"><button type="button" data-m="all">▶ Ganze Lektion</button><button type="button" data-m="words">▶ Wörter</button><button type="button" data-m="ex">▶ Nur Beispiele</button><button type="button" data-m="gram">▶ Grammatik</button><button type="button" data-m="story">▶ Geschichte</button></div>
-<div class="lp-row" id="lp-en-row"><span>Sprache</span><div class="chips" id="lp-en"></div></div>
-<div class="lp-row"><span>Tempo</span><div class="chips" id="lp-rate"></div></div>
-<div class="lp-row"><span>Jeder Satz</span><div class="chips" id="lp-each"></div></div>
-<div class="lp-row"><span>Am Ende</span><div class="chips" id="lp-loop"></div></div>
-<div class="lp-row"><span>🔊-Taste</span><div class="chips" id="lp-one"></div></div>
+<div class="lp-modes"><button type="button" data-m="all"><span aria-hidden="true">🎧</span> Ganze Lektion</button><button type="button" data-m="words"><span aria-hidden="true">🔤</span> Wörter</button><button type="button" data-m="ex"><span aria-hidden="true">💬</span> Nur Beispiele</button><button type="button" data-m="gram"><span aria-hidden="true">🧠</span> Grammatik</button><button type="button" data-m="story"><span aria-hidden="true">📖</span> Geschichte</button></div>
+<div class="sets" id="lp-set"></div>
 </div>
 <div class="now" id="now" hidden><div class="now-c" id="now-c">
 <button type="button" id="now-b" aria-label="Noch einmal" title="Noch einmal (am Satzanfang: zurück)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zm14 0v14L9 12z"/></svg></button>
@@ -479,12 +520,19 @@ LISTEN_HTML = """<div class="lp" id="lp" hidden data-unit="">
 # The listening engine shared by the course app and single audio sheets. The host defines d (document),
 # load/save (settings), need(id) (base64 audio, or '' while the page is still loading it), whenAudio(ids) (a promise
 # kept once those clips can be read), the objects SEQ, EXS, WRD, GRM and STO (per unit, the steps of "Ganze Lektion",
-# "Nur Beispiele", "Wörter", "Grammatik" and "Geschichte"), ENG (true when the English clips are there), heard(r)
+# "Nur Beispiele", "Wörter", "Grammatik" and "Geschichte"), TLS (the translation languages, English first), TLA (those
+# whose sound is there), TLN and TLD (their names and directions), tlChanged() (the language changed), heard(r)
 # (what is being played changed; null: nothing plays) and listening() (a session or a setting changed).
 # It runs in the host's scope, so its names must not repeat the host's (the app already has again(), end(), bar).
 LISTEN_JS = r"""
   /* ---------------- listening: every run plays as one audio track, so it goes on with the screen off ---------------- */
-  var A=load('listen',{one:0,each:2,loop:1,en:0,rate:1}); /* one: plays per 🔊 tap (0 = until tapped again); each: plays of every German sentence in a session; loop: start again at the end; en: each word and example's English after it; rate: the speed of every sound */
+  var A=load('listen',{one:0,each:2,loop:1,en:0,rate:1,show:1,tl:''}); /* one: plays per 🔊 tap (0 = until tapped again); each: plays of every German sentence in a session (any number); loop: start again at the end; en: each word and example's translation after it; rate: the speed of every sound; show: the translation shown while listening; tl: the translation language */
+  /* the translation language: the learner's choice, else the phone's language when the app has it, else the first (English) */
+  function tl(){ if(TLS.indexOf(A.tl)>=0) return A.tl; var p=(navigator.language||'').slice(0,2).toLowerCase(); return TLS.indexOf(p)>=0?p:TLS[0]; }
+  function trOf(it){ return it[4+TLS.indexOf(tl())]||0; }            /* a step's translation clip in that language */
+  function canHear(){ return TLA.indexOf(tl())>=0; }                  /* the app carries that language's sound */
+  function showTr(){ return A.show!==0; }
+  function setTL(code){ A.tl=code; save('listen',A); d.documentElement.setAttribute('data-tl',code); tlChanged(); liveSettings(); panel(); listening(); }
   var AT=load('listen-at',{});                     /* per unit, where a stopped session goes on: {m: mode, i: step, n: steps, c: first clip}; '*': a course session's, with its list of units and unit u */
   var player=new Audio(), R=null, held=null, lastF=null, lock=null, tipT=null, unlocked=false;
   var RATE=22050, PCM={}, cached=0, SIL={}, decoder=null;      /* clips decoded once, and silences, as small WAV blobs */
@@ -544,15 +592,15 @@ LISTEN_JS = r"""
   function decodeAll(list,k,fn){ var i=0, w=[]; function more(){ return i<list.length?fn(list[i++]).then(more):null; }
     for(var j=0;j<k;j++) w.push(more()); return Promise.all(w); }
   /* marks[k] = {i: step, at: its first sample, end: the sample after its last play}; an endless run is one round that loops.
-     With English, a word's meaning or an example's translation follows its German plays once (step[4]). */
-  function track(r){ var items=r.items, n=items.length, each=r.o.each||1, laps=r.o.laps||0, rounds=laps||1, en=ENG&&!!r.o.en, ids={};
-    items.forEach(function(it){ ids[it[0]]=1; if(en&&it[4]) ids[it[4]]=1; });
+     With a translation, a word's meaning or an example's translation in the chosen language follows its German plays once. */
+  function track(r){ var items=r.items, n=items.length, each=r.o.each||1, laps=r.o.laps||0, rounds=laps||1, en=canHear()&&!!r.o.en, ids={};
+    items.forEach(function(it){ ids[it[0]]=1; if(en&&trOf(it)) ids[trOf(it)]=1; });
     return whenAudio(Object.keys(ids)).then(function(){ return decodeAll(Object.keys(ids),4,pcm); }).then(function(){   /* only this run's clips */
       var parts=[], marks=[], at=0, lap, k, q;
       function add(p){ parts.push(p.b); at+=p.n; }
       for(lap=0;lap<rounds;lap++){
         for(k=0;k<n;k++){ var it=items[k], c=PCM[it[0]], reps=it[3]?each:1, m={i:k,at:at,end:at}; marks.push(m); if(!c) continue; m.cut=c.cut;
-          var dur=c.n/RATE, last=laps&&lap===rounds-1&&k===n-1, e=en&&it[4]?PCM[it[4]]:null;   /* a finite run ends right after its last sound */
+          var dur=c.n/RATE, last=laps&&lap===rounds-1&&k===n-1, e=en&&trOf(it)?PCM[trOf(it)]:null;   /* a finite run ends right after its last sound */
           for(q=0;q<reps;q++){ add(c); m.end=at; if(q<reps-1) add(quiet(gapAgain(dur))); }
           if(e){ add(quiet(450)); add(e); m.end=at; dur=e.n/RATE; }
           if(!last) add(quiet(n>1?gapNext(dur,it[1]):gapAgain(dur))); }
@@ -663,18 +711,50 @@ LISTEN_JS = r"""
     items.forEach(function(it){ var b=d.createElement('button'); b.type='button'; b.textContent=it[1]; b.setAttribute('aria-pressed',String(it[0]===value));
       b.addEventListener('click',function(){ set(it[0]); save('listen',A); liveSettings(); panel(); listening(); }); box.appendChild(b); }); }
   function liveSettings(){ tempo(); [R,held].forEach(function(r){ if(!r||!r.o.mode) return;
-      var laps=r.o.course?1:A.loop?0:1, en=!!A.en;                               /* a course plays its units once each, and loops as a whole */
+      var laps=r.o.course?1:A.loop?0:1, en=!!A.en, lang=tl();                  /* a course plays its units once each, and loops as a whole */
       if(r.next){ if(r.next.t) URL.revokeObjectURL(r.next.t.url); r.next=null; }   /* the next unit is built again, the new way */
-      if(r.o.each===A.each&&r.o.laps===laps&&!!r.o.en===en) return;
+      if(r.o.each===A.each&&r.o.laps===laps&&!!r.o.en===en&&(!en||r.o.tl===lang)) return;
       var t=R===r&&r.ready&&player.src===r.t.url?player.currentTime:(r.pos||0), from=r.ready?r.t.marks[markAt(r,t)].i:r.from;
-      r.o.each=A.each; r.o.laps=laps; r.o.en=en; prepare(r,from); });           /* a running session follows the panel from its current sentence */
+      r.o.each=A.each; r.o.laps=laps; r.o.en=en; r.o.tl=lang; prepare(r,from); });   /* a running session follows the settings from its current sentence */
     showBar(); }
-  var EN_CHIPS=[[0,'Nur Deutsch'],[1,'Deutsch + Englisch']];
-  function panel(){ chipRow('lp-each',[[1,'1×'],[2,'2×'],[3,'3×'],[5,'5×']],A.each,function(v){A.each=v;});
-    chipRow('lp-loop',[[0,'Einmal'],[1,'⟳ Endlos']],A.loop,function(v){A.loop=v;});
-    chipRow('lp-one',[[1,'1×'],[3,'3×'],[0,'∞ bis Stopp']],A.one,function(v){A.one=v;});
-    chipRow('lp-en',EN_CHIPS,A.en?1:0,function(v){A.en=v;}); d.getElementById('lp-en-row').hidden=!ENG;
-    chipRow('lp-rate',RATES,rateNow(),function(v){A.rate=v;});
+  /* ---- settings: rows of a label and a control, the same in the panel, in Hören and in Üben; a change applies at once ---- */
+  function changed(after){ save('listen',A); liveSettings(); panel(); listening(); if(after) after(); }
+  function setRow(box,label,fill,sub){ var r=d.createElement('div'), l=d.createElement('span'), c=d.createElement('div');
+    r.className='set-row'+(sub?' sub':''); l.className='set-l'; l.textContent=label; c.className='set-c'; fill(c); r.appendChild(l); r.appendChild(c); box.appendChild(r); }
+  function segment(box,items,value,set,after){ var g=d.createElement('div'); g.className='seg'; g.setAttribute('role','group');
+    items.forEach(function(it){ var b=d.createElement('button'); b.type='button'; b.textContent=it[1]; if(it[2]) b.lang=it[2];
+      b.setAttribute('aria-pressed',String(it[0]===value)); b.addEventListener('click',function(){ set(it[0]); changed(after); }); g.appendChild(b); });
+    box.appendChild(g); }
+  function flip(box,label,on,set,title,after){ var b=d.createElement('button'); b.type='button'; b.className='flip'; b.textContent=label; b.title=title;
+    b.setAttribute('aria-label',title); b.setAttribute('aria-pressed',String(!!on)); b.addEventListener('click',function(){ set(!on); changed(after); }); box.appendChild(b); }
+  /* − value +: a count from min to max, which can also be typed (any number of repeats), or one of a list (the tempo) */
+  function stepper(box,o,after){ var w=d.createElement('div'), less=d.createElement('button'), more=d.createElement('button'), list=o.list, at=list?list.map(function(x){ return x[0]; }).indexOf(o.value):-1,
+      field=d.createElement(list?'output':'input');
+    w.className='stp'; less.type=more.type='button'; less.textContent='−'; more.textContent='+';
+    less.setAttribute('aria-label',o.label+': '+'weniger'); more.setAttribute('aria-label',o.label+': '+'mehr');
+    function put(v){ o.set(v); changed(after); }
+    if(list){ at=Math.max(0,at); field.textContent=list[at][1]; less.disabled=at<=0; more.disabled=at>=list.length-1;
+      less.addEventListener('click',function(){ if(at>0) put(list[at-1][0]); }); more.addEventListener('click',function(){ if(at<list.length-1) put(list[at+1][0]); }); }
+    else { field.type='number'; field.inputMode='numeric'; field.min=o.min; field.max=o.max; field.value=o.value; field.setAttribute('aria-label',o.label);
+      less.disabled=o.value<=o.min; more.disabled=o.value>=o.max;
+      function typed(){ var v=Math.round(+field.value); put(isFinite(v)&&v>0?Math.max(o.min,Math.min(o.max,v)):o.value); }
+      less.addEventListener('click',function(){ put(Math.max(o.min,o.value-1)); }); more.addEventListener('click',function(){ put(Math.min(o.max,o.value+1)); });
+      field.addEventListener('change',typed); field.addEventListener('keydown',function(e){ if(e.key==='Enter') field.blur(); }); }
+    w.appendChild(less); w.appendChild(field); w.appendChild(more); box.appendChild(w); }
+  function langRow(box,after){ if(TLS.length<2) return;
+    setRow(box,'Übersetzung',function(c){ segment(c,TLS.map(function(code){ return [code,TLN[code]||code,code]; }),tl(),function(v){
+      A.tl=v; d.documentElement.setAttribute('data-tl',v); tlChanged(); },after); }); }
+  /* o.show: the switch for the written translation (Hören); o.one: the 🔊 button's repeats (the panel) */
+  function soundRows(id,o){ var box=d.getElementById(id); if(!box) return; box.innerHTML='';
+    langRow(box);
+    if(o.show||canHear()) setRow(box,TLS.length>1?'':'Übersetzung',function(c){
+      if(o.show) flip(c,'👁 anzeigen',showTr(),function(v){ A.show=v?1:0; },'Übersetzung anzeigen');
+      if(canHear()) flip(c,'🔊 vorlesen',!!A.en,function(v){ A.en=v?1:0; },'Übersetzung vorlesen'); },TLS.length>1);
+    setRow(box,'Wiederholen',function(c){ stepper(c,{value:Math.max(1,+A.each||1),min:1,max:99,label:'Wiederholen',set:function(v){ A.each=v; }}); });
+    setRow(box,'Tempo',function(c){ stepper(c,{list:RATES,value:rateNow(),label:'Tempo',set:function(v){ A.rate=v; }}); });
+    setRow(box,'Am Ende',function(c){ segment(c,[[0,'Einmal'],[1,'⟳ Endlos']],A.loop,function(v){ A.loop=v; }); });
+    if(o.one) setRow(box,'🔊-Taste',function(c){ segment(c,[[1,'1×'],[3,'3×'],[0,'∞']],A.one,function(v){ A.one=v; }); }); }
+  function panel(){ soundRows('lp-set',{one:true});
     var u=lp.getAttribute('data-unit'), at=AT[u], steps=at&&stepsOf(at.m)[u], busy=[R,held].some(function(r){ return r&&r.o.mode&&r.o.unit===u; });
     ['words','gram','story'].forEach(function(m){ var s=stepsOf(m)[u]; lp.querySelector('[data-m="'+m+'"]').hidden=!(s&&s.length); });
     lpGo.hidden=busy||!(steps&&steps.length===at.n&&steps[0][0]===at.c&&at.i>0&&at.i<steps.length);    /* a stopped session goes on where it stopped */
@@ -683,10 +763,10 @@ LISTEN_JS = r"""
     if(!lp.hidden&&lp.getAttribute('data-unit')===u){ lp.hidden=true; return; }
     row.parentNode.insertBefore(lp,row.nextSibling); lp.setAttribute('data-unit',u); lp.hidden=false; panel(); }
   function session(u,m,at){ lp.hidden=true;
-    run(stepsOf(m)[u],{btn:d.querySelector('.listen-open[data-unit="'+u+'"]'),each:A.each,laps:A.loop?0:1,follow:true,label:LABEL[m],unit:u,mode:m,at:at||0,en:!!A.en}); }
-  function gloss(w){ var t=w.getAttribute('title')||w.getAttribute('data-t'); if(!t||!tip) return;
-    if(w.getAttribute('title')){ w.setAttribute('data-t',t); w.removeAttribute('title'); }      /* no native tooltip on top of ours */
-    tip.textContent=t; tip.hidden=false; var b=w.getBoundingClientRect();
+    run(stepsOf(m)[u],{btn:d.querySelector('.listen-open[data-unit="'+u+'"]'),each:A.each,laps:A.loop?0:1,follow:true,label:LABEL[m],unit:u,mode:m,at:at||0,en:!!A.en,tl:tl()}); }
+  function gloss(w){ if(w.getAttribute('title')){ w.setAttribute('data-t',w.getAttribute('title')); w.removeAttribute('title'); }   /* no native tooltip on top of ours */
+    var own=w.getAttribute('data-tr-'+tl()), t=own||w.getAttribute('data-t'); if(!t||!tip) return;   /* the word and its meaning in the chosen language */
+    tip.textContent=t; tip.lang=own?tl():'en'; tip.dir=own&&TLD[tl()]?TLD[tl()]:'ltr'; tip.hidden=false; var b=w.getBoundingClientRect();
     tip.style.left=Math.max(8,Math.min(b.left+scrollX,scrollX+innerWidth-tip.offsetWidth-8))+'px'; tip.style.top=(b.bottom+scrollY+6)+'px';
     clearTimeout(tipT); tipT=setTimeout(function(){ tip.hidden=true; },3200);
     var h=w.getAttribute('data-h'); if(h) run([[h,0.4,null,0]],{laps:1,label:'Wort'}); }
@@ -719,7 +799,8 @@ AUDIO_JS = r"""
 (function(){
   'use strict';
   var d=document, P=__PAYLOADS__, SEQ={L:__SEQUENCE__}, EXS={L:__EXAMPLES__}, WRD={L:__WORDS__}, GRM={L:__GRAMMAR__}, STO={L:__STORY__};
-  var ENG=true;                                                      /* a sheet carries every clip, the English ones too */
+  var TLS=['en'], TLA=['en'], TLN={en:'English'}, TLD={};           /* a sheet: English only, and it carries its clips */
+  function tlChanged(){}
   function load(k,dflt){ try{ var v=localStorage.getItem('study-sheet:'+k); return v?JSON.parse(v):dflt; }catch(e){ return dflt; } }
   function save(k,v){ try{ localStorage.setItem('study-sheet:'+k,JSON.stringify(v)); }catch(e){} }
   function need(id){ return P[id]||''; }

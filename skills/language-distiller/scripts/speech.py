@@ -19,6 +19,7 @@ whenever unmarked mixed text is split, so the same text gives the same clips on 
 from __future__ import annotations
 
 import asyncio
+import functools
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -51,10 +52,21 @@ _EN = (("→", " becomes "), ("↔", ", the opposite of "), ("≈", ", roughly "
        ("Akk.", "accusative"), ("Dat.", "dative"), ("Gen.", "genitive"), ("Nom.", "nominative"))
 
 
+@functools.lru_cache(maxsize=None)
+def _support(lang):
+    """A translation language other than English: how its notation is read aloud, and its letters (its profile)."""
+    s = language.profile(lang)["speech"]
+    return tuple(tuple(pair) for pair in s.get("speakable", [])), s["letters"]
+
+
+def _letters_of(lang):
+    return _LETTERS if lang in ("de", "en") else _support(lang)[1]
+
+
 def speakable(text, lang="de"):
     """Turn visual notation into text a voice reads naturally."""
     text = " " + str(text).strip() + " "
-    for old, new in _COMMON + (_DE if lang == "de" else _EN):
+    for old, new in _COMMON + (_DE if lang == "de" else _EN if lang == "en" else _support(lang)[0]):
         text = text.replace(old, new)
     text = re.sub(r"\((e|n|en|s|es|er)\)", r"\1", text)          # Tag(e)s → Tages
     text = re.sub(rf"(?<![{_LETTERS}])'|'(?![{_LETTERS}])", "", text)   # quote marks, not don't / I'm
@@ -274,8 +286,8 @@ def unmarked_german(text):
 
 def _merge(parts):
     merged = []
-    for lang, chunk in parts:
-        if merged and (merged[-1][0] == lang or not re.search(rf"[{_LETTERS}0-9]", chunk)):
+    for lang, chunk in parts:                     # a run without letters of its own language (a comma) joins the one before
+        if merged and (merged[-1][0] == lang or not re.search(rf"[{_letters_of(lang)}0-9]", chunk)):
             merged[-1] = (merged[-1][0], merged[-1][1] + chunk)
         else:
             merged.append((lang, chunk))
@@ -306,19 +318,25 @@ def _pause_after(chunk, after=""):
 
 
 def make_clip(text, kind, voices, rate="", timed=False):
-    """Build a clip for `text` of the given kind ("de", "en", "mix-de", "marked"), spoken by `voices` (one per
-    language; the same voice for both makes one speaker) at `rate` ("-15%" is a little slower). A `timed` clip
-    also keeps when each word is spoken (a written explanation lights up its sentences); the id stays the same."""
-    require(kind in ("de", "en", "mix-de", "marked"), f"unknown text kind {kind}")
+    """Build a clip for `text` of the given kind ("de", "en", "mix-de", "marked", or "tr:<code>" for a translation
+    language such as Arabic, "tr:ar"), spoken by `voices` (one per language; the same voice for both makes one
+    speaker) at `rate` ("-15%" is a little slower). In a translation language the target-language words are marked
+    «…», as in "marked", and nothing is guessed. A `timed` clip also keeps when each word is spoken (a written
+    explanation lights up its sentences); the id stays the same."""
+    require(kind in ("de", "en", "mix-de", "marked") or kind.startswith("tr:"), f"unknown text kind {kind}")
     if kind == "de":
         raw = [("de", normalize(text))]
     elif kind == "marked":
         raw = segments(text, base="en")
+    elif kind.startswith("tr:"):
+        base = kind[3:]
+        require(base in voices, f"no voice for the translation language {base!r}")
+        raw = segments(text, base=base) if "«" in str(text) else [(base, str(text))]
     else:
         raw = segments(normalize(text), base="de" if kind == "mix-de" else "en")
     spoken = [(lang, speakable(chunk, lang), _pause_after(chunk, raw[i + 1][1] if i + 1 < len(raw) else ""))
               for i, (lang, chunk) in enumerate(raw)]
-    spoken = [item for item in spoken if re.search(rf"[{_LETTERS}0-9]", item[1])]
+    spoken = [item for item in spoken if re.search(rf"[{_letters_of(item[0])}0-9]", item[1])]
     require(spoken, f"empty audio text: {text!r}")
     parts = tuple((lang, words) for lang, words, _ in spoken)
     pauses = tuple(pause for _, _, pause in spoken[:-1])

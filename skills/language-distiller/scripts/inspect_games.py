@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Play every game of a built study app in headless Chrome at phone size, the way a hurried thumb does.
 
-usage: inspect_games.py STUDY_APP.html [--units L01,L02] [--answers 10] [--browser PATH] [--json]
+usage: inspect_games.py STUDY_APP.html [--units L01,L02] [--answers 10] [--language ar] [--browser PATH] [--json]
 
 It opens the app at 375 x 812 with touch, runs check_games.js on every unit (or the --units given) and reports a
 right answer shown as wrong, a Hör-Bingo call with two right answers, a Satzbau sentence that makes no sense, two
@@ -72,7 +72,7 @@ async def within(seconds, waiting, what):
         raise InspectError(f"{what} within {seconds:g} s") from None
 
 
-async def inspect(app, browser, units=None, answers=10):
+async def inspect(app, browser, units=None, answers=10, language=None):
     import aiohttp
     checker = CHECKER.read_text(encoding="utf-8")
     profile = tempfile.mkdtemp(prefix="language-distiller-games-")
@@ -107,6 +107,13 @@ async def inspect(app, browser, units=None, answers=10):
             await call("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5}, page)
             await call("Page.navigate", {"url": Path(app).resolve().as_uri()}, page)
             await within(120, loaded.wait(), "the app did not finish loading")    # a course with audio is 40-130 MB
+            if language:                       # the app's own choice of translation language: click the pill until it is shown
+                switched = await call("Runtime.evaluate", {"expression": (
+                    "(() => { const root = document.documentElement, pill = document.getElementById('tl-pill');"
+                    f" for (let i = 0; i < 8 && root.getAttribute('data-tl') !== {json.dumps(language)}; i++) {{ if (!pill) break; pill.click(); }}"
+                    " return root.getAttribute('data-tl'); })()"), "returnByValue": True}, page)
+                if switched["result"]["value"] != language:
+                    raise InspectError(f"the app has no translation language {language!r} (it shows {switched['result']['value']!r})")
             chosen = json.dumps(units) if units else "[...document.getElementById('pick').options].map(o => o.value)"
             count = len(units) if units else (await call("Runtime.evaluate", {
                 "expression": "document.getElementById('pick').options.length", "returnByValue": True}, page))["result"]["value"]
@@ -141,6 +148,7 @@ def main(argv=None):
     parser.add_argument("app", type=Path)
     parser.add_argument("--units", help="comma-separated unit ids (default: every unit)")
     parser.add_argument("--answers", type=int, default=10, help="answers to give in the timed article game")
+    parser.add_argument("--language", help="translation language to play in (en, ar, …; default: the app's own choice)")
     parser.add_argument("--browser", help="path to Chrome or Edge")
     parser.add_argument("--json", action="store_true", help="print the full report as JSON")
     args = parser.parse_args(argv)
@@ -148,7 +156,7 @@ def main(argv=None):
         if not args.app.is_file():
             raise InspectError(f"no such app: {args.app}")
         result = asyncio.run(inspect(args.app, find_browser(args.browser),
-                                     args.units.split(",") if args.units else None, args.answers))
+                                     args.units.split(",") if args.units else None, args.answers, args.language))
     except (InspectError, OSError, asyncio.TimeoutError) as error:
         print(f"FAIL: {str(error) or type(error).__name__}", file=sys.stderr)     # never an empty reason
         return 2

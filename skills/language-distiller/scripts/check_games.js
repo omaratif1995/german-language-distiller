@@ -16,7 +16,14 @@
   const until = async (test, ms = 4000) => { const end = Date.now() + ms; while (Date.now() < end) { if (test()) return true; await wait(40); } return false; };
   const $ = (sel, root = document) => root.querySelector(sel), $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
   const script = $$('script').map(s => s.text).find(t => t.includes(', G='));
-  const G = JSON.parse(script.match(/, G=(\{.*?\});\n/s)[1].replace(/<\\\//g, '</'));
+  const parsed = text => JSON.parse(text.replace(/<\\\//g, '</'));
+  let G = parsed(script.match(/, G=(\{.*?\});\n/s)[1]);
+  /* a translation language lays its own texts over the English ones, exactly as the app does (overlay, gamesIn) */
+  const overlay = (a, b) => Array.isArray(b) ? (a || []).map((x, i) => i < b.length ? overlay(x, b[i]) : x)
+    : b && typeof b === 'object' ? Object.assign({}, a, ...Object.keys(b).map(k => ({[k]: a && a[k] !== null && typeof a[k] === 'object' ? overlay(a[k], b[k]) : b[k]}))) : b;
+  const code = document.documentElement.getAttribute('data-tl') || 'en';
+  const GT = (script.match(/GT=(\{.*?\}), G0=G/s) || [])[1];
+  if (code !== 'en' && GT && parsed(GT)[code]) G = overlay(G, parsed(GT)[code]);
   const clipOf = {};                                   /* audio payload → clip id, to know which sentence Hör-Bingo plays */
   $$('script[type="text/plain"][id^="au-"]').forEach(block => block.textContent.split(';').forEach(pair => {
     const at = pair.indexOf(':'); if (at > 0) clipOf[pair.slice(at + 1)] = pair.slice(0, at); }));

@@ -333,7 +333,7 @@ class CourseAppTests(unittest.TestCase):
         self.assertTrue(all(len(step) == 5 for step in words["U1"]))       # each with its English
         config = json.loads(re.search(r"CFG=(\{.*?\}), G=", page, re.S).group(1))
         self.assertTrue(config["en"])
-        for mode in ('data-m="words"', 'data-m="gram"', 'id="lp-en"'):    # the lesson's panel offers them too
+        for mode in ('data-m="words"', 'data-m="gram"', 'id="lp-set"', "'🔊 vorlesen'"):   # the lesson's panel offers them too
             self.assertIn(mode, page)
         plain = self.root / "app_hear_german_only.html"
         build_course_app.build(course_audio.load_course(self.course_path), plain, audio=True, placeholder_audio=True, english=False)
@@ -400,9 +400,10 @@ class CourseAppTests(unittest.TestCase):
         out = self.root / "app_speed.html"
         build_course_app.build(course_audio.load_course(self.course_path), out, audio=True, placeholder_audio=True)
         page = out.read_text(encoding="utf-8")
-        for place in ('id="lp-rate"', 'id="h-rate"', 'id="s-rate"', 'id="now-r"', 'id="now-tempo"'):   # panel, Hören, Üben, the bar
+        for place in ('id="lp-set"', 'id="h-set"', 'id="s-set"', 'id="now-r"', 'id="now-tempo"'):   # panel, Hören, Üben, the bar
             self.assertIn(place, page)
         self.assertIn("RATES=[[0.6,'0,6×'],[0.7,'0,7×'],[0.8,'0,8×'],[0.9,'0,9×'],[1,'1×'],[1.2,'1,2×']]", page)
+        self.assertEqual(page.count("stepper(c,{list:RATES,value:rateNow(),label:'Tempo'"), 2)   # the settings rows and Üben's: one A.rate
         self.assertIn("preservesPitch", page)                                        # slower, not lower
 
     # -- the audio format: MP3 for every browser, Opus for a smaller file ---------------------------------------
@@ -597,6 +598,96 @@ class CourseAppTests(unittest.TestCase):
         sheet.write_text(sheet.read_text(encoding="utf-8").replace('content="reviewed"', 'content="draft"'), encoding="utf-8")
         with self.assertRaises(Exception):
             build_course_app.build(course_audio.load_course(self.course_path), self.root / "app2.html", audio=False)
+
+
+ARABIC = {
+    "U1": {"v1": {"gloss": "موعد", "ex": ["ها هو الموعد."]},
+           "g1": {"ex": ["رغم المطر نخرج.", "رغم البرد نبقى."]},
+           "e1": {"gloss": "عبارة", "when": "استعملها.", "variants": ["نفسه"], "ex": ["اليوم."]},
+           "story": ["ها هو الموعد.", "نخرج رغم المطر.", "في المساء أقول «Ich wollte fragen»."]},
+    "U2": {"v1": {"gloss": "رحلة", "ex": ["ها هي الرحلة."]},
+           "g1": {"ex": ["بسبب المطر نبقى.", "بسبب البرد نبقى."]},
+           "e1": {"gloss": "عبارة", "when": "استعملها.", "variants": ["نفسه"], "ex": ["اليوم."]}},
+}
+
+
+class TranslationTests(CourseAppTests.__bases__[0]):
+    """A second translation language (Arabic): validated, spoken, written next to the English and chosen in the app."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        units = []
+        for uid, title, word, art, gt, frame in (("U1", "Erste Einheit", "Termin", "der", "trotz + Genitiv", "Ich wollte fragen …"),
+                                                 ("U2", "Zweite Einheit", "Ausflug", "der", "wegen + Genitiv", "Wie wäre es mit …")):
+            lesson, sheet = bundle(self.root, uid, title, word, art, gt, frame, story=uid == "U1")
+            units.append({"id": uid, "label": f"Einheit {uid[1:]}", "lesson": lesson.name, "sheet": sheet.name})
+        self.units = units
+        self.write(ARABIC)
+
+    def write(self, told):
+        (self.root / "translations_ar.json").write_text(json.dumps(told, ensure_ascii=False), encoding="utf-8")
+        (self.root / "course.json").write_text(json.dumps(
+            {"title": "Test Kurs", "cache": "_work/audio", "units": self.units,
+             "translations": {"ar": "translations_ar.json"}}, ensure_ascii=False), encoding="utf-8")
+        return course_audio.load_course(self.root / "course.json")
+
+    def test_a_complete_translation_passes(self):
+        course = self.write(ARABIC)
+        course_audio.check_translations(course)
+        self.assertEqual(list(course_audio.unit_translations(course, "U1")), ["ar"])
+
+    def test_every_gap_is_named(self):
+        for edit, error in ((lambda t: t["U1"]["v1"].pop("gloss"), "missing gloss"),
+                            (lambda t: t["U1"]["g1"].update(ex=["واحد"]), "needs 2 translation"),
+                            (lambda t: t["U1"].pop("e1"), "e1: missing"),
+                            (lambda t: t["U1"].update(story=["واحد"]), "story needs 3"),
+                            (lambda t: t.pop("U2"), "unit U2 is missing"),
+                            (lambda t: t["U1"]["v1"].update(gloss="Termin"), "Latin letters outside"),
+                            (lambda t: t["U1"]["v1"].update(gloss="موعد «Termin"), "«")):
+            told = copy.deepcopy(ARABIC)
+            edit(told)
+            with self.subTest(error=error), self.assertRaisesRegex(course_audio.AudioError, error):
+                course_audio.check_translations(self.write(told))
+
+    def test_german_inside_the_marks_is_spoken_by_the_german_voice(self):
+        voices = {"de": "de-DE-SeraphinaMultilingualNeural", "en": "en-US-AriaNeural", "ar": "ar-SA-ZariyahNeural"}
+        clip = speech.make_clip("أقول «Ich wollte fragen» اليوم.", "tr:ar", voices)
+        self.assertEqual([lang for lang, _ in clip.parts], ["ar", "de", "ar"])
+        self.assertNotEqual(clip.clip_id, speech.make_clip("أقول اليوم.", "tr:ar", voices).clip_id)
+        with self.assertRaises(Exception):
+            speech.make_clip("x", "xx:ar", voices)
+
+    def test_markup_gives_every_text_its_language(self):
+        out = self.root / "app.html"
+        build_course_app.build(course_audio.load_course(self.root / "course.json"), out, audio=False)
+        page = out.read_text(encoding="utf-8")
+        card = re.search(r'<article class="voc"[^>]*id="U1-v1"[^>]*>(.*?)</article>', page, re.S)
+        card = card.group(1) if card else page
+        self.assertIn('data-tl="en"', card)
+        self.assertIn('data-tl="ar" lang="ar" dir="rtl"', card)
+        self.assertIn("موعد", card)
+        story = re.search(r'<details class="story-tr">.*?</details>', page, re.S).group(0)
+        self.assertEqual(story.count('lang="ar"'), 1)
+        self.assertIn("<bdi", re.search(r"في المساء.*?</p>", page, re.S).group(0))      # German inside Arabic stays left-to-right
+
+    def test_the_app_knows_its_languages_and_steps(self):
+        out = self.root / "app.html"
+        build_course_app.build(course_audio.load_course(self.root / "course.json"), out, audio=True, placeholder_audio=True)
+        page = out.read_text(encoding="utf-8")
+        cfg = json.loads(re.search(r"CFG=(\{.*?\}), G=", page, re.S).group(1))
+        self.assertEqual(cfg["tls"], ["en", "ar"])
+        self.assertEqual(cfg["tld"]["ar"], "rtl")
+        self.assertIn("ar", cfg["tln"])
+        games = re.search(r"GT=(\{.*?\});\n", page, re.S)
+        self.assertIsNotNone(games)
+        self.assertIn('"ar"', games.group(1))
+
+    def test_ltr_runs_only_in_right_to_left_text(self):
+        marked = build_course_app.ltr_runs("قل «Termin» الآن", "rtl")
+        self.assertIn('<bdi dir="ltr"', marked)
+        self.assertEqual(build_course_app.ltr_runs("say «Termin» now", "ltr"), "say «Termin» now")
 
 
 if __name__ == "__main__":

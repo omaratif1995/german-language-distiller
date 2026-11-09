@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from embed_audio import (AUDIO_CSS, LISTEN_HTML, LISTEN_JS, AudioError, examples_order, explanation_sentences,  # noqa: E402
                          grammar_order, inject_example_buttons, inject_story_audio, listening_order, number_examples,
                          play_button, require, sentence_times, story_order, transform_card, words_order)
-from course_audio import build_course_plan, exact_term, ffmpeg_exe, load_course, unit_narration  # noqa: E402
+from course_audio import build_course_plan, exact_term, ffmpeg_exe, load_course, unit_narration, unit_translations  # noqa: E402
 import language  # noqa: E402
 import speech  # noqa: E402
 import study_pack  # noqa: E402
@@ -54,7 +54,7 @@ def add_audio_buttons(page, lesson, unit_plan, used, prof=None, ui=None):
     for rec in lesson["vocabulary"]:
         def voc(block, rec=rec):
             head = take(f'{rec["id"]}-head')
-            block, n = re.subn(r'(<div class="top"><span class="de">.*?</span>)(?=<span class="en">)',
+            block, n = re.subn(r'(<div class="top"><span class="de">.*?</span>)(?=<span class="en"[ >])',
                                lambda m: m.group(1) + play_button(head, f"Play {name} headword"), block, count=1, flags=re.S)
             require(n == 1, f"cannot place headword audio for {rec['id']}")
             return inject_example_buttons(block, [take(f'{rec["id"]}-ex-{i}') for i in range(len(rec["examples"]))], rec["id"])
@@ -66,9 +66,15 @@ def add_audio_buttons(page, lesson, unit_plan, used, prof=None, ui=None):
             backup = unit_plan.get("explain_en", {}).get(rec["id"])
             button = (f'<button type="button" class="explain-button" data-chain="{" ".join(chain)}" '
                       f'aria-label="Listen to the explanation">{html.escape(ui.get("🔊 Erklärung", "🔊 Erklärung"))}</button>')
+            others = {code: told[rec["id"]] for code, told in sorted(unit_plan.get("explain_tr", {}).items()) if told.get(rec["id"])}
             if backup:                                         # the same explanation in English, one tap away
-                button += (f'<button type="button" class="explain-button explain-en" data-chain="{" ".join(backup)}" '
+                mark = ' data-tl="en"' if others else ""
+                button += (f'<button type="button" class="explain-button explain-en"{mark} data-chain="{" ".join(backup)}" '
                            f'aria-label="Listen to the explanation in English" title="English">EN</button>')
+            for code, chain in others.items():                 # and in each translation language (the chosen one shows)
+                name = html.escape(language.profile(code).get("native", code))
+                button += (f'<button type="button" class="explain-button explain-en" data-tl="{code}" lang="{code}" '
+                           f'data-chain="{" ".join(chain)}" aria-label="{name}" title="{name}">{html.escape(tr_short(code))}</button>')
             block, n = re.subn(r"</h3>", lambda m: button + "</h3>", block, count=1)
             require(n == 1, f"cannot place explanation audio for {rec['id']}")
             return inject_example_buttons(block, [take(f'{rec["id"]}-ex-{i}') for i in range(len(rec["examples"]))], rec["id"])
@@ -130,29 +136,149 @@ def explanation_html(text, lang, prof, clip="", cache=None):
     return f'<div class="say" lang="{html.escape(lang)}"{source}>{"".join(parts)}</div>'
 
 
+# ---------------------------------------------------------------- translation languages ---
+# English is the lesson's own language of meanings and translations; a course can add others (translations files, see
+# course_audio.check_translations). Every English text then gets data-tl="en", and its translation in each language
+# follows it as an element of the same class with data-tl, lang and dir; the app shows the chosen language only.
+COURSE_CODE = "de"                 # the course's language, set by build(); marks the words inside «…» of a translation
+
+
+def ltr_runs(escaped, direction):
+    """In a right-to-left text, the course-language words marked «…» keep their own direction, so the quotation marks
+    stay on the outside of the German words instead of being mirrored."""
+    if direction != "rtl":
+        return escaped
+    return re.sub(r"«[^»]*»", lambda m: f'<bdi dir="ltr" lang="{COURSE_CODE}">{m.group(0)}</bdi>', escaped)
+
+
+def tr_html(code, text, cls="", tag="span", prefix=""):
+    prof = language.profile(code)
+    direction = "rtl" if prof.get("direction") == "rtl" else "ltr"
+    css = f' class="{cls}"' if cls else ""
+    return (f'<{tag}{css} data-tl="{code}" lang="{code}" dir="{direction}">{prefix}'
+            f'{ltr_runs(html.escape(text), direction)}</{tag}>')
+
+
+def tr_wrap(code, inner, cls=""):
+    """Markup that is already HTML, in a translation language (as tr_html, without escaping it again)."""
+    direction = "rtl" if language.profile(code).get("direction") == "rtl" else "ltr"
+    css = f' class="{cls}"' if cls else ""
+    return f'<span{css} data-tl="{code}" lang="{code}" dir="{direction}">{inner}</span>'
+
+
+def tr_short(code):
+    """The language's name on a small button: EN, or its profile's own short name (Arabic: عربي)."""
+    return "EN" if code == "en" else language.profile(code).get("short") or code.upper()
+
+
+def add_translations(page, lesson, unit_tr):
+    """Beside every English text of a sheet (a word's meaning and forms, an example's translation, a phrase's meaning,
+    use and variants, a story paragraph's translation, an underlined story word's tip), its translation in each
+    language of unit_tr ({code: the unit's part of the translations file})."""
+    codes = sorted(code for code, unit in (unit_tr or {}).items() if unit)
+    if not codes:
+        return page
+    item = lambda code, rid: unit_tr[code].get(rid) or {}          # noqa: E731
+
+    def examples(block, rid):
+        counter = iter(range(10 ** 6))
+
+        def pair(m):
+            index = next(counter)
+            return (f'<span class="tr" lang="en" data-tl="en">{m.group(1)}</span>'
+                    + "".join(tr_html(code, item(code, rid)["ex"][index], "tr", prefix="— ") for code in codes))
+        return re.sub(r'<span class="tr" lang="en">(.*?)</span>', pair, block, flags=re.S)
+
+    def beside(block, pattern, tag, cls, texts, where):
+        def pair(m):
+            return (f'<{tag} class="{cls}" data-tl="en">{m.group(1)}</{tag}>'
+                    + "".join(tr_html(code, text, cls, tag) if text is not None else f'<{tag} class="{cls}" data-tl="{code}">{m.group(1)}</{tag}>'
+                              for code, text in zip(codes, texts)))
+        block, n = re.subn(pattern, pair, block, count=1, flags=re.S)
+        require(n == 1, f"cannot place the translations of {where}")
+        return block
+
+    for rec in lesson["vocabulary"]:
+        def voc(block, rid=rec["id"]):
+            block = beside(block, r'<span class="en">(.*?)</span>', "span", "en", [item(c, rid)["gloss"] for c in codes], rid)
+            if any(item(c, rid).get("forms") for c in codes):    # a forms line with English in it (German alone stays as it is)
+                block = beside(block, r'<p class="forms">(.*?)</p>', "p", "forms", [item(c, rid).get("forms") for c in codes], rid)
+            return examples(block, rid)
+        page = transform_card(page, "voc", rec["id"], voc)
+    for rec in lesson["grammar"]:
+        page = transform_card(page, "rule", rec["id"], lambda block, rid=rec["id"]: examples(block, rid))
+    for rec in lesson["redemittel"]:
+        def phrase(block, rid=rec["id"]):
+            block = beside(block, r'<p class="meaning">(.*?)</p>', "p", "meaning", [item(c, rid)["gloss"] for c in codes], rid)
+            uses = [item(c, rid)["when"] + (" · " + item(c, rid)["register"] if item(c, rid).get("register") else "") for c in codes]
+            block = beside(block, r'<div class="when">(.*?)</div>', "div", "when", uses, rid)
+            counter = iter(range(10 ** 6))
+
+            def variant(m):
+                index = next(counter)
+                return (m.group(1) + f'<span data-tl="en">{m.group(2)}</span>'
+                        + "".join(tr_html(code, item(code, rid)["variants"][index]) for code in codes) + "</p>")
+            block = re.sub(r'(<p class="variant">.*? — )(.*?)</p>', variant, block, flags=re.S)
+            return examples(block, rid)
+        page = transform_card(page, "phrase", rec["id"], phrase)
+    if lesson.get("story"):
+        counter = iter(range(10 ** 6))
+
+        def paragraph(m):
+            index = next(counter)
+            return (m.group(1) + f'<p lang="en" data-tl="en">{m.group(2)}</p>'
+                    + "".join(tr_html(code, unit_tr[code]["story"][index], tag="p") for code in codes) + m.group(3))
+        page = re.sub(r'(<details class="story-tr"><summary>.*?</summary>)<p lang="en">(.*?)</p>(</details>)', paragraph, page, flags=re.S)
+
+        def tip(m):                                   # an underlined word's tip: "the word: its meaning", in each language
+            lemma = html.unescape(m.group(2)).split(": ", 1)[0]
+            return m.group(0) + "".join(f' data-tr-{code}="{html.escape(lemma + ": " + item(code, m.group(1)).get("gloss", ""), quote=True)}"'
+                                        for code in codes if item(code, m.group(1)).get("gloss"))
+        page = re.sub(r'<span class="lw" data-card="([^"]+)" title="([^"]*)"', tip, page)
+    return page
+
+
+def game_translations(lesson, unit, prof=None):
+    """The games' English texts in one translation language, in the shape of game_data, for the app to lay over it."""
+    prof = prof or language.profile(lesson.get("target_language", "de"))
+    item = lambda rec: unit.get(rec["id"]) or {}                  # noqa: E731
+    return {"v": [{"g": item(rec)["gloss"], "x": [{"en": text} for text in item(rec)["ex"]]} for rec in lesson["vocabulary"]],
+            "r": [{"g": item(rec)["gloss"], "w": item(rec)["when"], "reg": item(rec).get("register", ""), "x": {"en": item(rec)["ex"][0]}}
+                  for rec in lesson["redemittel"]],
+            "s": [{"en": item(rec)["ex"][index]} for section in ("vocabulary", "grammar", "redemittel") for rec in lesson[section]
+                  for index, example in enumerate(rec["examples"]) if puzzle_sentence(example["de"], prof)]}
+
+
 USE_LABEL = {"daily": "Alltag", "writing": "Schreiben", "exam": "Prüfung"}     # more_examples: where it is used
 
 
-def more_html(gid, more, unit_plan=None, ui=None):
+def more_html(gid, more, unit_plan=None, ui=None, translated=None):
     """A grammar point's extra examples, folded under its own («Mehr Beispiele»): each with where it is used, the
-    grammar marked, its 🔊 and its English. Ids <card>-m<n>, so a listening session can follow them."""
+    grammar marked, its 🔊 and its English (and its translation in each language of translated: {code: [texts]}).
+    Ids <card>-m<n>, so a listening session can follow them."""
     tr, controls = (lambda text: html.escape((ui or {}).get(text, text))), (unit_plan or {}).get("controls", {})
+    codes = sorted(code for code, texts in (translated or {}).items() if texts)
+    mark = ' data-tl="en"' if codes else ""
     rows = []
     for index, example in enumerate(more):
         clip = controls.get(f"{gid}-more-{index}")
+        english = f'<span class="tr" lang="en"{mark}>— {html.escape(example["en"])}</span>'
         rows.append(f'<div class="ex more" id="{gid}-m{index}">{play_button(clip, "Play example") if clip else ""}'
                     f'<span class="use">{tr(USE_LABEL[example["use"]])}</span> {study_pack.marked(example)} '
-                    f'<span class="tr" lang="en">— {html.escape(example["en"])}</span></div>')
+                    f'{english}{"".join(tr_html(code, translated[code][index], "tr", prefix="— ") for code in codes)}</div>')
     return f'<details class="more"><summary>{tr("Mehr Beispiele")} ({len(more)})</summary>{"".join(rows)}</details>'
 
 
-def write_explanations(page, lesson, narration, unit_plan=None, cache=None, prof=None, ui=None):
+def write_explanations(page, lesson, narration, unit_plan=None, cache=None, prof=None, ui=None, unit_tr=None):
     """A grammar card whose narration speaks the course's language shows it written out, in place of the short
     English meaning, rule and contrast: the narration's blocks, its own title and patterns when it gives them, and
-    the English backup folded away («Auf Englisch»). With audio, the sentence being read lights up.
+    the English backup folded away («Auf Englisch»), beside it the backup in each translation language of unit_tr.
+    With audio, the sentence being read lights up.
     A point's extra examples ("more", from more_examples) follow its own, folded (more_html)."""
     prof, ui = prof or language.profile(lesson.get("target_language", "de")), ui or {}
     english = language.profile("de")                  # English sentences start like German ones, with a capital
+    codes = sorted(code for code, unit in (unit_tr or {}).items() if unit)
+    mark = ' data-tl="en"' if codes else ""
     for rec in lesson["grammar"]:
         told = (narration or {}).get(rec["id"])
         told = {"en": told} if isinstance(told, str) else (told or {})
@@ -160,13 +286,20 @@ def write_explanations(page, lesson, narration, unit_plan=None, cache=None, prof
             continue
         clips = {lang: ((unit_plan or {}).get(key, {}).get(rec["id"]) or [""])[0]
                  for lang, key in (("de", "explain"), ("en", "explain_en"))}
+        backups = {code: ((unit_tr[code].get(rec["id"]) or {}).get("explain"),
+                          (((unit_plan or {}).get("explain_tr", {}).get(code) or {}).get(rec["id"]) or [""])[0]) for code in codes}
 
-        def card(block, rec=rec, told=told, clips=clips):
+        def card(block, rec=rec, told=told, clips=clips, backups=backups):
             if told.get("de"):
                 say = explanation_html(told["de"], prof["code"], prof, clips["de"], cache)
                 if told.get("en"):
-                    say += (f'<details class="say-en"><summary>{html.escape(ui.get("Auf Englisch", "Auf Englisch"))}</summary>'
+                    say += (f'<details class="say-en"{mark}><summary>{html.escape(ui.get("Auf Englisch", "Auf Englisch"))}</summary>'
                             f'{explanation_html(told["en"], "en", english, clips["en"], cache)}</details>')
+                for code, (text, clip) in backups.items():
+                    if text:
+                        own = language.profile(code)
+                        say += (f'<details class="say-en" data-tl="{code}"><summary>{tr_html(code, own.get("native", code))}</summary>'
+                                f'{explanation_html(text, code, own, clip, cache)}</details>')
                 block, n = re.subn(r"<p><b>Meaning:</b>.*?</p><p><b>Rule:</b>.*?</p>", lambda m: say, block, count=1, flags=re.S)
                 require(n == 1, f"cannot place the written explanation for {rec['id']}")
                 block = re.sub(r'<p class="contrast">.*?</p>', "", block, count=1, flags=re.S)
@@ -177,7 +310,8 @@ def write_explanations(page, lesson, narration, unit_plan=None, cache=None, prof
                     block = re.sub(r'<div class="patterns">.*?</div>', lambda m: f'<div class="patterns">{rows}</div>', block,
                                    count=1, flags=re.S)
             if told.get("more"):
-                block = block[:-len("</article>")] + more_html(rec["id"], told["more"], unit_plan, ui) + "</article>"
+                translated = {code: (unit_tr[code].get(rec["id"]) or {}).get("more") for code in codes}
+                block = block[:-len("</article>")] + more_html(rec["id"], told["more"], unit_plan, ui, translated) + "</article>"
             return block
         page = transform_card(page, "rule", rec["id"], card)
     return page
@@ -377,12 +511,35 @@ APP_CSS = r"""
   details.more{margin:12px 0 2px;padding-top:8px;border-top:1px dashed var(--line)}
   details.more>summary{cursor:pointer;color:var(--accent);font-size:14.5px;font-weight:700;padding:4px 0 6px}
   .codec-warn{margin:0 0 14px;padding:12px 14px;border-radius:12px;background:#7c2d12;color:#ffedd5;font-size:15px;line-height:1.45}
+  [lang="ar"]{font-family:"Noto Naskh Arabic","Noto Sans Arabic","Geeza Pro","Arabic Typesetting","Segoe UI",Tahoma,Arial,sans-serif}
+  [dir="rtl"]{font-style:normal}
+  [data-tl][dir="rtl"]{unicode-bidi:isolate;text-align:right;line-height:1.75}
+  .ex .tr[dir="rtl"],.ex.more .tr[dir="rtl"]{display:block;font-style:normal;margin-top:4px;font-size:1.04em}
+  .top .en[dir="rtl"]{font-size:1.05em}
+  .meaning[dir="rtl"],.when[dir="rtl"],.forms[dir="rtl"],.story-tr p[dir="rtl"]{direction:rtl}
+  .story-tr p[dir="rtl"]{font-style:normal;text-align:right}
+  details.say-en[data-tl] .say-ex,details.say-en[data-tl] .say-ex p{direction:ltr !important;text-align:left !important;unicode-bidi:isolate !important}
+  details.say-en[data-tl] .say em.x{direction:ltr;unicode-bidi:isolate}
+  .front [dir="rtl"],.back [dir="rtl"]{text-align:center}
+  .q-mean[dir="rtl"],.q-when[dir="rtl"]{direction:rtl}
+  .say[lang="ar"] p{direction:rtl;text-align:right;line-height:1.85}
+  .h-en[dir="rtl"]{font-style:normal;text-align:right;line-height:1.8;font-size:16.5px}
+  .h-en.long{font-size:14px}
+  .bar .tl-pill{width:auto;min-width:48px;padding:6px 10px;font-weight:700;font-size:14px}
+  .tl-first{display:flex;flex-direction:column;gap:8px;margin:0 0 18px;padding:14px;border:1px solid var(--accent);border-radius:14px;background:rgba(36,39,46,.75)}
+  .tl-first b{font-size:16px}
+  .tl-first span{color:var(--muted);font-size:14px;line-height:1.45}
+  .tl-opts{display:flex;gap:8px;flex-wrap:wrap}
+  .tl-opts button{flex:1 1 120px;font:inherit;font-size:16px;font-weight:700;min-height:46px;border-radius:12px;cursor:pointer;color:var(--ink);background:var(--card);border:1px solid var(--line)}
+  .tl-opts button[aria-pressed="true"]{border-color:var(--accent)}
+  .h-sets,.pr .sets{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 12px}
+  .pr .sets .seg button,.pr .sets .stp button,.pr .sets .stp output{min-height:36px}
   .ex .use{display:inline-block;font-size:10.5px;font-weight:700;font-style:normal;letter-spacing:.6px;text-transform:uppercase;
            color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:0 7px;margin-right:6px;vertical-align:2px}
   .mode-practice .lernen,.mode-games .lernen,.mode-listen .lernen{display:none}
   #practice,#games,#listen{display:none}
   .mode-practice #practice,.mode-games #games,.mode-listen #listen{display:block}
-  .mode-practice .lern-only,.mode-games .search-only,.mode-listen .search-only{display:none !important}
+  .mode-practice .lern-only,.mode-games .search-only,.mode-listen .search-only,.mode-listen .tl-pill{display:none !important}
   #listen{padding-bottom:86px}
   .h-now{margin:2px 0 14px;padding:14px 16px 15px;border-radius:16px;background:linear-gradient(135deg,#134e4a,#0f766e);color:#ecfdf5;
          box-shadow:0 10px 26px rgba(0,0,0,.3)}
@@ -573,7 +730,9 @@ APP_JS = r"""
   'use strict';
   var d=document, root=d.documentElement; root.classList.add('js');
   var AU={}, IDX=__INDEX__, SEQ=__SEQUENCES__, EXS=__EXAMPLES__, WRD=__WORDS__, GRM=__GRAMMAR__, STO=__STORIES__, UT=__TITLES__, CARDS=__CARDS__, ORDER=__ORDER__, CFG=__CONFIG__, G=__GAME__;
-  var K=CFG.key, ARTS=CFG.arts||[], COL=CFG.col||{}, ENG=!!CFG.en;   /* the language's articles and their colours; English clips in the app */
+  var K=CFG.key, ARTS=CFG.arts||[], COL=CFG.col||{};                 /* the language's articles and their colours */
+  var TLS=CFG.tls||['en'], TLA=CFG.tla||(CFG.en?['en']:[]), TLN=CFG.tln||{en:'English'}, TLD=CFG.tld||{}, TL2=CFG.tls2||{en:'EN'};   /* translation languages: all, those with sound, names, directions, short names */
+  var GT=__GAME_TR__, G0=G;                                          /* the games' texts in each translation language, laid over the English */
   function load(k,dflt){try{var v=localStorage.getItem(K+':'+k);return v?JSON.parse(v):dflt;}catch(e){return dflt;}}
   function save(k,v){try{localStorage.setItem(K+':'+k,JSON.stringify(v));}catch(e){}}
   var ui=load('ui',{}), state=load('srs',{}), meta=load('meta',{day:0,fresh:0,extra:0,streak:0,last:-9,done:0,good:0});
@@ -596,6 +755,25 @@ APP_JS = r"""
       for(var i=0;i<bin.length;i++) raw[i]=bin.charCodeAt(i);
       var p=new C(1,1,22050).decodeAudioData(raw.buffer,function(){},bad); if(p&&p.catch) p.catch(function(){}); }catch(e){ bad(); } })();
 __LISTEN__
+  /* ---------------- the translation language: one choice for the whole app (html[data-tl] shows its texts) ---------------- */
+  function overlay(a,b){ if(Array.isArray(b)) return (a||[]).map(function(x,i){ return i<b.length?overlay(x,b[i]):x; });
+    if(b&&typeof b==='object'){ var o={}, k; for(k in a) o[k]=a[k]; for(k in b) o[k]=a&&a[k]!==null&&typeof a[k]==='object'?overlay(a[k],b[k]):b[k]; return o; }
+    return b; }
+  function gamesIn(code){ G=code!=='en'&&GT[code]?overlay(G0,GT[code]):G0; }
+  var tlPill=d.getElementById('tl-pill'), tlFirst=d.getElementById('tl-first');
+  function pill(){ if(!tlPill) return; tlPill.hidden=TLS.length<2; tlPill.textContent=TL2[tl()]||tl(); tlPill.lang=tl();
+    tlPill.setAttribute('aria-label','Übersetzung'+': '+(TLN[tl()]||tl())); tlPill.title=TLN[tl()]||tl(); }
+  function tlChanged(){ var code=tl(); d.documentElement.setAttribute('data-tl',code); gamesIn(code); pill();
+    if(tlFirst) tlFirst.hidden=true;
+    if(d.body.classList.contains('mode-practice')){ renderSettings(); render(); }
+    heard(playing()); }
+  if(tlPill) tlPill.addEventListener('click',function(){ setTL(TLS[(TLS.indexOf(tl())+1)%TLS.length]); });
+  if(tlFirst){                                                        /* the first start: which language for the translations? */
+    var opts=tlFirst.querySelector('.tl-opts');
+    TLS.forEach(function(code){ var b=d.createElement('button'); b.type='button'; b.textContent=TLN[code]||code; b.lang=code; b.setAttribute('aria-pressed',String(code===tl()));
+      b.addEventListener('click',function(){ setTL(code); }); opts.appendChild(b); });
+    tlFirst.hidden=!(TLS.length>1&&TLS.indexOf(A.tl)<0); }
+  d.documentElement.setAttribute('data-tl',tl()); gamesIn(tl()); pill();
   /* ---------------- Lernen: unit picker and search ---------------- */
   var units=[].slice.call(d.querySelectorAll('section.unit')), sel=d.getElementById('pick'), q=d.getElementById('q'), hits=d.getElementById('hits');
   function show(id,scroll){ if(!units.some(function(u){return u.id===id;})) id=units[0].id;
@@ -647,7 +825,7 @@ __LISTEN__
   function scopeOf(s){ var at=Math.max(0,ORDER.indexOf(sel.value)), g=(CFG.groups||[]).filter(function(x){ return x[0]===s; })[0];
     return s==='one'?[ORDER[at]]:s==='from'?ORDER.slice(at):g?g[1].slice():ORDER.slice(); }
   function courseOpts(m,list,k,at){ var u=list[k];
-    return {each:A.each,laps:1,follow:true,label:HLABEL[m],unit:u,mode:m,at:at,en:!!A.en,where:CFG.labels[u]||u,course:{list:list},
+    return {each:A.each,laps:1,follow:true,label:HLABEL[m],unit:u,mode:m,at:at,en:!!A.en,tl:tl(),where:CFG.labels[u]||u,course:{list:list},
       then:function(){ var j=playable(list,m,k+1); if(j<0&&A.loop) j=playable(list,m,0);      /* ⟳ Endlos: the whole choice again */
         return j<0?null:[unitSteps(list[j],m),courseOpts(m,list,j,0)]; }}; }
   function courseRun(m,list,k,at){ k=playable(list,m,k); if(k>=0) run(unitSteps(list[k],m),courseOpts(m,list,k,at||0)); }
@@ -660,10 +838,7 @@ __LISTEN__
     var scopes=[['one','Nur'+' '+name],['from','Ab'+' '+name]].concat((CFG.groups||[]).map(function(g){ return [g[0],g[0]]; }),[['all','Alle Lektionen']]);
     if(!scopes.some(function(s){ return s[0]===A.scope; })) A.scope='all';
     chipRow('h-scope',scopes,A.scope,function(v){A.scope=v;});
-    chipRow('h-lang',EN_CHIPS,A.en?1:0,function(v){A.en=v;}); d.getElementById('h-lang-row').hidden=!ENG;
-    chipRow('h-rate',RATES,rateNow(),function(v){A.rate=v;});
-    chipRow('h-each',[[1,'1×'],[2,'2×'],[3,'3×'],[5,'5×']],A.each,function(v){A.each=v;});
-    chipRow('h-loop',[[0,'Einmal'],[1,'⟳ Endlos']],A.loop,function(v){A.loop=v;});
+    soundRows('h-set',{show:true});
     var at=AT['*'], st=at&&at.list&&at.list.indexOf(at.u)>=0?unitSteps(at.u,at.m):[];
     hGo.hidden=!!cur||!(st.length&&st.length===at.n&&st[0][0]===at.c&&at.i<st.length);    /* a stopped course session goes on where it stopped */
     if(!hGo.hidden) hGo.textContent='▶ Weiter: '+HLABEL[at.m]+' · '+(CFG.labels[at.u]||at.u)+' · '+(at.i+1)+' / '+at.n;
@@ -671,17 +846,23 @@ __LISTEN__
   function listening(){ if(d.body.classList.contains('mode-listen')) hearPage(); }
   function textOf(el,skip){ var c=el.cloneNode(true); [].forEach.call(c.querySelectorAll('button'+(skip?','+skip:'')),function(x){ x.remove(); });
     return c.textContent.replace(/\s+/g,' ').trim(); }
-  /* what is being heard, written big: the sentence or word, and its English when the learner listens with English */
+  function escH(s){ return String(s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  /* the element that holds el's translation in the chosen language (English: the one without a language mark, or "en") */
+  function trIn(el,sel){ var code=tl(), own=el.querySelector(sel+'[data-tl="'+code+'"]');
+    return own||(code==='en'?el.querySelector(sel+':not([data-tl]),'+sel+'[data-tl="en"]'):null); }
+  /* what is being heard, written big: the sentence or word, and below it its translation in the chosen language, whether
+     the translation is also heard or not (Übersetzung: anzeigen) */
   function heard(r){ if(!hNow) return; if(!r||!r.o.course){ hNow.hidden=true; return; }
-    var it=r.items[r.cur>=0?r.cur:r.from]||[], el=typeof it[2]==='string'?d.getElementById(it[2]):null, de='', en='', part, e=d.getElementById('h-en');
+    var it=r.items[r.cur>=0?r.cur:r.from]||[], el=typeof it[2]==='string'?d.getElementById(it[2]):null, de='', tr='', part, e=d.getElementById('h-en');
     if(!el){ part=d.querySelector('section.unit[id="'+r.o.unit+'"] h1'); de=part?part.textContent:''; }
-    else if(el.classList.contains('ex')){ de=textOf(el,'.tr,.use'); part=el.querySelector('.tr'); en=part?part.textContent.replace(/^\s*—\s*/,''):''; }
-    else if(el.classList.contains('voc')){ part=el.querySelector('.top .de'); de=part?textOf(part):''; part=el.querySelector('.top .en'); en=part?part.textContent:''; }
-    else if(el.classList.contains('phrase')){ part=el.querySelector('.head'); de=part?textOf(part):''; part=el.querySelector('.meaning'); en=part?part.textContent:''; }
+    else if(el.classList.contains('ex')){ de=textOf(el,'.tr,.use'); part=trIn(el,'.tr'); tr=part?part.textContent.replace(/^\s*—\s*/,''):''; }
+    else if(el.classList.contains('voc')){ part=el.querySelector('.top .de'); de=part?textOf(part):''; part=trIn(el,'.top .en'); tr=part?part.textContent:''; }
+    else if(el.classList.contains('phrase')){ part=el.querySelector('.head'); de=part?textOf(part):''; part=trIn(el,'.meaning'); tr=part?part.textContent:''; }
     else if(el.classList.contains('rule')||el.classList.contains('story')){ part=el.querySelector('h3'); de=part?textOf(part):''; }
+    else if(el.classList.contains('ss')){ de=textOf(el); part=el.closest('.story-p'); part=part&&trIn(part,'.story-tr p'); tr=part?part.textContent:''; }
     else de=textOf(el);
     d.getElementById('h-where').textContent=r.o.label+' · '+r.o.where; d.getElementById('h-de').textContent=de;
-    e.textContent=en; e.hidden=!(r.o.en&&en); hNow.hidden=false; }
+    e.innerHTML=TLD[tl()]==='rtl'?escH(tr).replace(/«[^»]*»/g,'<bdi dir="ltr" lang="'+d.documentElement.lang+'">$&</bdi>'):escH(tr); e.lang=tl(); e.dir=TLD[tl()]||'ltr'; e.classList.toggle('long',tr.length>140); e.hidden=!(showTr()&&tr); hNow.hidden=false; }
   if(hModes){
     hModes.addEventListener('click',function(e){ var b=e.target.closest('[data-m]'), cur=playing(); if(!b) return; var m=b.getAttribute('data-m');
       if(cur&&cur===R&&cur.o.mode===m){ endRun(); return; }                    /* the one playing: stop it */
@@ -755,7 +936,7 @@ __LISTEN__
     if(shown){ fly('fly-left',function(){ grade(false); advance(); }); return; }
     grade(false); missed=true; shown=true; render(); autoBack(); }
   function offerUndo(snap){ clearTimeout(undoTimer); undo=snap; undoBox.innerHTML='';
-    var t=d.createElement('span'); t.textContent='✓ '+(snap.card.a||''); undoBox.appendChild(t);
+    var t=d.createElement('span'); t.textContent='✓ '+((snap.card.at&&snap.card.at[tl()])||snap.card.a||''); undoBox.appendChild(t);
     var b=d.createElement('button'); b.type='button'; b.textContent='Rückgängig'; b.addEventListener('click',doUndo); undoBox.appendChild(b);
     undoBox.classList.add('on'); undoTimer=setTimeout(dropUndo,6000); }
   function dropUndo(){ clearTimeout(undoTimer); undo=null; if(undoBox) undoBox.classList.remove('on'); }
@@ -811,13 +992,17 @@ __LISTEN__
   function renderSettings(){
     unitChips();
     chips('s-kinds',[['w','Wortschatz'],['g','Grammatik'],['r','Redemittel']],S.kinds,function(k){ var i=S.kinds.indexOf(k); if(i>=0) S.kinds.splice(i,1); else S.kinds.push(k); persist(); start(); });
-    chips('s-dir',[['de','Deutsch → Englisch'],['en','Englisch → Deutsch']],[S.dir],function(v){ S.dir=v; persist(); renderSettings(); render(); });
+    var dirs=[['de','Deutsch → Englisch'],['en','Englisch → Deutsch']];   /* with another translation language, its name for English's */
+    if(tl()!=='en') dirs=dirs.map(function(x){ return [x[0],x[1].replace(/Englisch|English/,TLN[tl()]||tl())]; });
+    chips('s-dir',dirs,[S.dir],function(v){ S.dir=v; persist(); renderSettings(); render(); });
     chips('s-new',[[5,'5'],[10,'10'],[15,'15'],[20,'20'],[25,'25'],[40,'40']],[S.perDay],function(v){ S.perDay=v; persist(); start(); });
     chips('s-round',[[10,'10'],[20,'20'],[0,'ohne Pause']],[S.round],function(v){ S.round=v; persist(); renderSettings(); });
     chips('s-mode',[[false,'Tagesplan'],[true,'Durchblättern']],[S.browse],function(v){ S.browse=v; persist(); start(); });
     chips('s-auto',[[true,'Ton an'],[false,'Ton aus']],[S.auto],function(v){ S.auto=v; persist(); renderSettings(); });
-    chipRow('s-rate',RATES,rateNow(),function(v){ A.rate=v; setTimeout(renderSettings); });   /* the same speed as in Hören and the panel */
-    d.getElementById('s-rate-g').hidden=!Object.keys(IDX).length;
+    var box=d.getElementById('s-set'); box.innerHTML='';              /* the same language and speed as in Hören and the panel */
+    langRow(box,function(){ setTimeout(renderSettings); });
+    if(Object.keys(IDX).length) setRow(box,'Tempo',function(c){ stepper(c,{list:RATES,value:rateNow(),label:'Tempo',set:function(v){ A.rate=v; }},function(){ setTimeout(renderSettings); }); });
+    d.getElementById('s-set-g').hidden=!box.children.length;
     var stat=d.getElementById('s-stat'); stat.innerHTML='';             /* every lesson, one line per book */
     (CFG.groups||[[null,ORDER]]).forEach(function(g){ var n={neu:0,lern:0,sicher:0,fest:0}, line=d.createElement('span');
       CARDS.forEach(function(c){ if(g[1].indexOf(c.u)<0||S.kinds.indexOf(c.k)<0) return; var s=state[c.id];
@@ -1107,7 +1292,7 @@ PRACTICE = """
 <div class="group"><div class="lab">Pause nach … Karten</div><div class="chips" id="s-round"></div></div>
 <div class="group"><div class="lab">Modus</div><div class="chips" id="s-mode"></div></div>
 <div class="group"><div class="lab">Ton (Aussprache und Spiele)</div><div class="chips" id="s-auto"></div></div>
-<div class="group" id="s-rate-g"><div class="lab">Tempo (Aussprache)</div><div class="chips" id="s-rate"></div></div>
+<div class="group" id="s-set-g"><div class="lab">Übersetzung und Tempo</div><div class="sets" id="s-set"></div></div>
 <div class="group"><div class="lab">Fortschritt</div><p class="stat" id="s-stat"></p>
 <div class="backup"><button type="button" id="save-btn">Sichern</button><label for="load-in">Laden</label><input type="file" id="load-in" accept="application/json,.json"></div>
 <p class="stat">Der Fortschritt bleibt in diesem Browser auf diesem Gerät. Mit „Sichern“ nimmst du ihn mit.</p></div>
@@ -1133,10 +1318,7 @@ HEAR = """
 <div class="h-lab">Aus welchen Lektionen?</div>
 <div class="h-chips" id="h-scope"></div>
 <div class="h-lab">So klingt es</div>
-<div class="h-row" id="h-lang-row"><span>Sprache</span><div class="h-chips" id="h-lang"></div></div>
-<div class="h-row"><span>Tempo</span><div class="h-chips" id="h-rate"></div></div>
-<div class="h-row"><span>Jeder Satz</span><div class="h-chips" id="h-each"></div></div>
-<div class="h-row"><span>Am Ende</span><div class="h-chips" id="h-loop"></div></div>
+<div class="sets h-sets" id="h-set"></div>
 <p class="h-note">Es läuft weiter, wenn der Bildschirm aus ist: Pause, zurück und weiter auch auf dem Sperrbildschirm und am Kopfhörer.</p>
 </section>
 """
@@ -1147,6 +1329,7 @@ FRAME = """<nav class="bar" aria-label="Navigation">
 <button class="nav lern-only" id="prev" type="button" aria-label="Vorherige Lektion">‹</button>
 <select class="lern-only" id="pick" aria-label="Lektion wählen">__OPTIONS__</select>
 <button class="nav lern-only" id="next" type="button" aria-label="Nächste Lektion">›</button>
+<button class="nav lern-only tl-pill" id="tl-pill" type="button" hidden></button>
 <input class="lern-only search-only" id="q" type="search" placeholder="Suchen…" aria-label="Suchen">
 <div class="hits lern-only search-only" id="hits"></div>
 </nav>
@@ -1155,8 +1338,9 @@ FRAME = """<nav class="bar" aria-label="Navigation">
 
 # Runs in <head>, before any unit is read: every unit but the one the learner was on stays hidden while the page loads,
 # so a phone never lays out the whole course (that took longer than the reading itself). The app script takes over.
-EARLY_JS = """<script>(function(){ var r=document.documentElement, u={}; r.classList.add('js');
-  try{ u=JSON.parse(localStorage.getItem('__KEY__:ui'))||{}; }catch(e){}
+EARLY_JS = """<script>(function(){ var r=document.documentElement, u={}, a={}, L=__TLS__; r.classList.add('js');
+  try{ u=JSON.parse(localStorage.getItem('__KEY__:ui'))||{}; a=JSON.parse(localStorage.getItem('__KEY__:listen'))||{}; }catch(e){}
+  if(L.length>1){ var p=(navigator.language||'').slice(0,2).toLowerCase(); r.setAttribute('data-tl',L.indexOf(a.tl)>=0?a.tl:L.indexOf(p)>=0?p:L[0]); }
   if(u.tab==='p'||u.tab==='g'||u.tab==='h') return; var s=document.createElement('style'); s.id='early-unit';
   s.textContent='section.unit[id="'+(typeof u.unit==='string'&&/^[A-Za-z0-9_-]+$/.test(u.unit)?u.unit:'__FIRST__')+'"]{display:block}';
   document.head.appendChild(s); })();</script>"""
@@ -1193,11 +1377,19 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
                                                  zip((bitrate, explain_bitrate, english_bitrate),
                                                      OPUS_RATES if audio_format == "opus" else MP3_RATES))
     prof = course.get("profile") or language.profile("de")
+    global COURSE_CODE
+    COURSE_CODE = prof["code"]
     ui = language.ui_table(prof)
     plan = build_course_plan(course)[1] if audio else None
     css, sections, options, cards = None, [], [], []
     sequences, examples, stories, games, words, grammar, titles = {}, {}, {}, {}, {}, {}, {}
-    used_german, used_explain, first_unit, first_english = set(), set(), {}, {}
+    codes = sorted(course.get("translations") or {})          # translation languages beside English
+    langs = ["en"] + codes
+    carried = [code for code in langs if code != "en" or english]   # whose clips the app carries (--no-english: not English's)
+    used_german, used_explain, first_unit = set(), set(), {}
+    first_tr = {code: {} for code in langs}                    # a translation clip: the unit it is first heard in
+    explain_tr = {code: {} for code in codes}                  # a grammar explanation in a translation language: its unit
+    game_tr = {code: {} for code in codes}
     for unit in course["units"]:
         uid, label = unit["id"], unit["label"]
         page = unit["sheet"].read_text(encoding="utf-8")
@@ -1205,8 +1397,10 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
         lesson = json.loads(unit["lesson"].read_text(encoding="utf-8-sig"))
         css = css or re.search(r"<style>(.*?)</style>", page, re.S).group(1)
         unit_plan = plan["units"][uid] if audio else None
-        page = write_explanations(page, lesson, unit_narration(course, uid) if "more_examples" in course else course.get("narration", {}).get(uid), unit_plan,
-                                  course["cache"] if audio and not placeholder_audio else None, prof, ui)
+        unit_tr = unit_translations(course, uid)
+        page = add_translations(page, lesson, unit_tr)
+        page = write_explanations(page, lesson, unit_narration(course, uid), unit_plan,
+                                  course["cache"] if audio and not placeholder_audio else None, prof, ui, unit_tr)
         if audio:
             page = add_audio_buttons(page, lesson, unit_plan, used_german, prof, ui)
             sequences[uid] = listening_order(f"{uid}-", lesson, unit_plan)
@@ -1217,17 +1411,28 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
             titles[uid] = unit_plan["title"]
             for steps in (sequences[uid], examples[uid], words[uid], grammar[uid]):
                 for step in steps:
-                    if len(step) > 4 and not english:
-                        del step[4:]                          # no English in this app: the steps do not name it
-                    elif len(step) > 4:
-                        first_english.setdefault(step[4], len(sections))
+                    for index, code in enumerate(langs):      # step[4 + i]: its translation in langs[i]
+                        if len(step) > 4 + index and step[4 + index]:
+                            if code in carried:
+                                first_tr[code].setdefault(step[4 + index], len(sections))
+                            else:
+                                step[4 + index] = 0           # not in this app (--no-english): the step does not name it
+                    while len(step) > 4 and not step[-1]:
+                        step.pop()
             for chain in list(unit_plan["explain"].values()) + list(unit_plan.get("explain_en", {}).values()):
                 used_explain.update(chain)
+            for code in codes:
+                for chain in unit_plan.get("explain_tr", {}).get(code, {}).values():
+                    for cid in chain:
+                        explain_tr[code].setdefault(cid, len(sections))
             used_german.update([unit_plan["title"]] + list(unit_plan["sections"].values()))
             for cid in used_german | used_explain:
                 first_unit.setdefault(cid, len(sections))
         page = number_examples(page, lesson)
         games[uid] = game_data(lesson, unit_plan)
+        for code in codes:
+            if unit_tr.get(code):
+                game_tr[code][uid] = game_translations(lesson, unit_tr[code], prof)
         body = re.search(r'<main class="wrap">(.*?)</main>', page, re.S).group(1)
         if audio:
             body = body.replace("</header>", f'<div class="listen-row"><button type="button" class="listen-open" data-unit="{uid}">'
@@ -1237,17 +1442,28 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
         for kind, cid, inner in re.findall(r'<article class="(voc|rule|phrase)" id="([^"]+)">(.*?)</article>', body, re.S):
             card = {"u": uid, "l": label, "id": f"{uid}-{cid}", "k": KIND[kind], "b": inner}
             if kind == "voc":
-                m = re.search(r'<span class="de">(.*?)</span>(?:<button[^>]*>.*?</button>)?<span class="en">(.*?)</span>', inner, re.S)
+                m = re.search(r'<span class="de">(.*?)</span>(?:<button[^>]*>.*?</button>)?<span class="en"[^>]*>(.*?)</span>', inner, re.S)
                 card.update(f=m.group(1), r=m.group(2), a=f"{plain(m.group(1))} = {plain(m.group(2))}")
+                others = {code: re.search(rf'<span class="en" data-tl="{code}"[^>]*>(.*?)</span>', inner, re.S) for code in codes}
+                others = {code: found.group(1) for code, found in others.items() if found}
+                if others:                                    # the reverse side and the undo line in every language
+                    card["r"] = f'<span data-tl="en">{m.group(2)}</span>' + "".join(tr_wrap(code, text) for code, text in others.items())
+                    card["at"] = {code: f"{plain(m.group(1))} = {plain(text)}" for code, text in others.items()}
                 if audio:
                     card["fa"] = unit_plan["controls"][f"{cid}-head"]
             elif kind == "rule":
                 card["f"] = re.sub(r"<button.*?</button>", "", re.search(r"<h3>(.*?)</h3>", inner, re.S).group(1), flags=re.S)
                 card["a"] = plain(card["f"])
             else:
-                meaning = re.search(r'<p class="meaning">(.*?)</p>', inner, re.S).group(1)
-                when = re.search(r'<div class="when">(.*?)</div>', inner, re.S).group(1)
+                meaning = re.search(r'<p class="meaning"[^>]*>(.*?)</p>', inner, re.S).group(1)
+                when = re.search(r'<div class="when"[^>]*>(.*?)</div>', inner, re.S).group(1)
                 card["f"] = f'<span class="q-mean">{meaning}</span><span class="q-when">{when}</span>'
+                fronts = {code: (re.search(rf'<p class="meaning" data-tl="{code}"[^>]*>(.*?)</p>', inner, re.S),
+                                 re.search(rf'<div class="when" data-tl="{code}"[^>]*>(.*?)</div>', inner, re.S)) for code in codes}
+                if any(a and b for a, b in fronts.values()):  # the situation to answer, in every language
+                    card["f"] = (f'<span class="q-mean" data-tl="en">{meaning}</span><span class="q-when" data-tl="en">{when}</span>'
+                                 + "".join(tr_wrap(code, a.group(1), "q-mean") + tr_wrap(code, b.group(1), "q-when")
+                                           for code, (a, b) in fronts.items() if a and b))
                 card["a"] = plain(re.search(r'<div class="head">(.*?)</div>', inner, re.S).group(1))
                 if audio:
                     card["ba"] = unit_plan["controls"][f"{cid}-head"]
@@ -1256,12 +1472,14 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
         sections.append(f'<section class="unit" id="{uid}">{body}</section>')
 
     payloads = {}
-    used_english = set(first_english) - used_german - used_explain
+    used_tr = {code: set(first_tr[code]) - used_german - used_explain for code in langs}
+    used_tr_explain = {code: set(explain_tr[code]) - used_german - used_explain for code in codes}
+    carried_tr = set().union(*used_tr.values(), *used_tr_explain.values())
     if audio:                                         # every clip a button or a listening order plays gets embedded
         named = {cid for orders in (sequences, examples, words, grammar, stories) for steps in orders.values()
-                 for step in steps for cid in step[:1] + step[4:5] if cid}
+                 for step in steps for cid in step[:1] + step[4:] if cid}
         named |= {cid for chain in re.findall(r'data-(?:audio|chain)="([^"]*)"', "".join(sections)) for cid in chain.split()}
-        unsent = sorted(named - used_german - used_explain - used_english)
+        unsent = sorted(named - used_german - used_explain - carried_tr)
         require(not unsent, f"played but not embedded ({len(unsent)}): {', '.join(unsent[:3])}{' …' if len(unsent) > 3 else ''}")
     probe = ""
     if audio and not placeholder_audio:
@@ -1270,8 +1488,17 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
             require(encoder_available(ff, "libopus"),
                     "this ffmpeg has no Opus encoder (libopus): use --audio-format mp3, or install a full ffmpeg build")
             probe = opus_probe(ff)
-        jobs = ([(cid, bitrate) for cid in sorted(used_german)] + [(cid, explain_bitrate) for cid in sorted(used_explain - used_german)]
-                + [(cid, english_bitrate) for cid in sorted(used_english)])
+        rates = {}                                    # the first rate a clip gets wins: the target language's, then the explanations'
+        for cid in sorted(used_german):
+            rates.setdefault(cid, bitrate)
+        for cid in sorted(used_explain):
+            rates.setdefault(cid, explain_bitrate)
+        for code in langs:
+            for cid in sorted(used_tr[code]):
+                rates.setdefault(cid, english_bitrate)
+            for cid in sorted(used_tr_explain.get(code, ())):
+                rates.setdefault(cid, explain_bitrate)
+        jobs = list(rates.items())
         with ThreadPoolExecutor(max_workers=6) as pool:
             for cid, data in zip([j[0] for j in jobs],
                                  pool.map(lambda j: compressed(course["cache"], j[0], j[1], ff, audio_format), jobs)):
@@ -1290,14 +1517,26 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
               "arts": prof["articles"], "col": prof["article_colours"]}
     if groups:
         config["groups"] = groups
-    if audio and english and used_english:
+    if audio and english and used_tr["en"]:
         config["en"] = True                           # the learner can listen with English
+    if codes:                                         # translation languages: the learner chooses one (html[data-tl])
+        config.update(tls=langs, tla=[code for code in langs if first_tr[code]], tls2={code: tr_short(code) for code in langs},
+                      tln={"en": "English", **{code: language.profile(code).get("native", code) for code in codes}},
+                      tld={code: "rtl" for code in codes if language.profile(code).get("direction") == "rtl"})
     if not language.spaced(prof):                     # Satzbau asks the browser for the words (Intl.Segmenter)
         config.update(spaces=False, small=prof["bingo"]["function_words"].split())
     rtl = study_pack.RTL_CSS + RTL_APP_CSS if prof.get("direction") == "rtl" else ""
     # one block per unit, in course order; the English ones (1000 + unit) after all the target-language ones, so a
     # unit's own sound is never kept waiting for English the learner may not want
-    where = {cid: first_unit[cid] if cid in first_unit else 1000 + first_english[cid] for cid in payloads}
+    def block_of(cid):                                # a translation clip goes after all the target language's, by language
+        if cid in first_unit:
+            return first_unit[cid]
+        for index, code in enumerate(langs):
+            for found in (first_tr[code], explain_tr.get(code, {})):
+                if cid in found:
+                    return 1000 * (index + 1) + found[cid]
+        raise AudioError(f"no block for clip {cid}")
+    where = {cid: block_of(cid) for cid in payloads}
     blocks = {}
     for cid, data in payloads.items():
         blocks.setdefault(where[cid], []).append(f"{cid}:{data}")
@@ -1315,6 +1554,7 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
           .replace("__ORDER__", json.dumps([u["id"] for u in course["units"]]))
           .replace("__CONFIG__", compact(config))
           .replace("__PROBE__", probe)
+          .replace("__GAME_TR__", compact(game_tr))
           .replace("__GAME__", compact(games)))
     notice = (f'<div class="codec-warn" id="codec-warn" role="alert" hidden>{html.escape(ui.get(OPUS_NOTICE, OPUS_NOTICE))}</div>\n'
               if probe else "")
@@ -1325,19 +1565,25 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
              .replace("__HEAR_TAB__", language.localize(HEAR_TAB, ui) if audio else "")
              .replace("</nav>", "</nav>\n" + EARLY_BAR.replace("__KEY__", config["key"]), 1))
     hear = language.localize(HEAR, ui).replace("__LANG__", prof["code"]) if audio else ""
-    early = EARLY_JS.replace("__KEY__", config["key"]).replace("__FIRST__", course["units"][0]["id"])
+    early = EARLY_JS.replace("__KEY__", config["key"]).replace("__FIRST__", course["units"][0]["id"]).replace("__TLS__", json.dumps(langs))
+    first = ('<div class="tl-first" id="tl-first" hidden><b>' + html.escape(ui.get("Übersetzung", "Übersetzung")) + '</b><span>'
+             + html.escape(ui.get("In welcher Sprache möchtest du die Übersetzungen lesen und hören?",
+                                  "In welcher Sprache möchtest du die Übersetzungen lesen und hören?"))
+             + '</span><div class="tl-opts"></div></div>\n') if codes else ""
+    # html[data-tl] shows the chosen language's texts and hides the others'; until the app sets it, the head script has
+    tl_css = "".join(f'html[data-tl="{code}"] [data-tl]:not([data-tl="{code}"]){{display:none !important}}' for code in langs) if codes else ""
     doc = f"""<!DOCTYPE html>
 <html lang="{prof['code']}"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="study-pack-app" content="course v2">
 <title>{html.escape(course['title'])}</title>
-<style>{css}{AUDIO_CSS}{APP_CSS}{rtl}</style>
+<style>{css}{AUDIO_CSS}{APP_CSS}{rtl}{tl_css}</style>
 {early}
 </head>
 <body><main class="wrap">
 {notice}{frame}
 <div class="lernen">
-<div class="cover"><b>{html.escape(course['title'])}</b>{subtitle}</div>
+{first}<div class="cover"><b>{html.escape(course['title'])}</b>{subtitle}</div>
 {''.join(sections)}
 </div>
 {hear}

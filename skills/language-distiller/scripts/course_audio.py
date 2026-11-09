@@ -29,9 +29,16 @@ import study_pack  # noqa: E402
 
 BYTES_PER_SECOND = 6000   # edge-tts delivers 48 kbit/s constant-bitrate MP3
 STEP = 0.4                # silence granularity in seconds
-COURSE_KEYS = {"title", "subtitle", "narration", "more_examples", "voices", "cache", "episodes_dir", "new_per_day",
-               "private_terms", "units"}
+COURSE_KEYS = {"title", "subtitle", "narration", "more_examples", "translations", "voices", "cache", "episodes_dir",
+               "new_per_day", "private_terms", "units"}
 MORE_USES = ("daily", "writing", "exam")          # where an extra grammar example is used: everyday life, writing, the exam
+# What a translations file gives per card, beside the English in the lesson (see references/course-app.md):
+# a word: its meaning, its forms line (only where that has English in it) and one translation per example;
+# a grammar point: one translation per example and per extra example, and its explanation (where it has an English one);
+# a phrase: its meaning, when to use it, its register and variants (where it has them) and one translation per example;
+# a unit with a story: one translation per paragraph ("story").
+TRANSLATION_FIELDS = {"vocabulary": {"gloss", "forms", "ex"}, "grammar": {"ex", "more", "explain"},
+                      "redemittel": {"gloss", "when", "register", "variants", "ex"}}
 
 
 def load_course(path):
@@ -46,6 +53,9 @@ def load_course(path):
     course["narration"] = json.loads((base / narration).read_text(encoding="utf-8-sig")) if narration else {}
     more = course.get("more_examples")
     course["more_examples"] = json.loads((base / more).read_text(encoding="utf-8-sig")) if more else {}
+    files = course.get("translations") or {}
+    require(isinstance(files, dict), 'translations: {"<language code>": "<file>"}, for example {"ar": "translations_ar.json"}')
+    course["translations"] = {code: json.loads((base / name).read_text(encoding="utf-8-sig")) for code, name in sorted(files.items())}
     course["cache"] = (base / course.get("cache", "_work/audio")).resolve()
     course["episodes_dir"] = (base / course.get("episodes_dir", "Audio")).resolve()
     course["private_terms"] = [str(term) for term in course.get("private_terms", [])]
@@ -80,7 +90,84 @@ def load_course(path):
     course["voices"] = {"de": course["profile"]["voice"], "en": speech.DEFAULT_VOICES["en"],
                         **language.narrator(course["profile"]), **(course.get("voices") or {})}
     check_more_examples(course)
+    check_translations(course)
+    for code in course["translations"]:           # each translation language speaks with its own profile's voice
+        course["voices"].setdefault(code, language.profile(code)["voice"])
     return course
+
+
+def _translated(text, where, latin_free, lines=False):
+    """A translated text: not empty, its «…» closed in turn, one line (an explanation: lines), and in a language
+    written without Latin letters every Latin word inside «…», where the target-language voice speaks it."""
+    require(isinstance(text, str) and text.strip(), f"{where}: an empty or missing translation")
+    require(lines or "\n" not in text, f"{where}: one line")
+    require(balanced_marks(text), f"{where}: «…» do not close in turn")
+    if latin_free:
+        outside = re.sub(r"«[^«»]*»", "", text)
+        found = re.findall(r"[A-Za-zÄÖÜäöüß]+", outside)
+        require(not found, f"{where}: Latin letters outside «…» ({', '.join(found[:3])}): mark the target-language words «…»")
+
+
+def check_translations(course):
+    """translations: per language a file with, per unit, the translation of every English text of its cards and its
+    story (TRANSLATION_FIELDS); every unit and card is covered, so a learner never meets English in that language."""
+    if not course["translations"]:
+        return
+    lessons = {u["id"]: json.loads(u["lesson"].read_text(encoding="utf-8-sig")) for u in course["units"]}
+    for code, data in course["translations"].items():
+        require(re.fullmatch(r"[a-z]{2,3}", code) is not None and code not in ("en", course["profile"]["code"]),
+                f"translations: {code!r} is not a language to translate into (English is the lesson's own)")
+        try:
+            prof = language.profile(code)
+        except language.LanguageError as error:
+            raise AudioError(f"translations {code}: {error}") from error
+        latin_free = not re.search(r"[A-Za-z]", prof.get("native", "A"))
+        require(isinstance(data, dict), f"translations {code}: an object with one entry per unit")
+        unknown = sorted(set(data) - set(lessons))
+        require(not unknown, f"translations {code}: unknown unit(s) {', '.join(unknown)}")
+        for uid, lesson in lessons.items():
+            unit = data.get(uid)
+            require(isinstance(unit, dict), f"translations {code}: unit {uid} is missing")
+            records = {rec["id"]: (section, rec) for section in TRANSLATION_FIELDS for rec in lesson[section]}
+            extra = sorted(set(unit) - set(records) - {"story"})
+            require(not extra, f"translations {code} {uid}: unknown card(s) {', '.join(extra)}")
+            for rid, (section, rec) in records.items():
+                where, item = f"translations {code} {uid} {rid}", unit.get(rid)
+                require(isinstance(item, dict), f"{where}: missing")
+                unknown = sorted(set(item) - TRANSLATION_FIELDS[section])
+                require(not unknown, f"{where}: unknown field(s) {', '.join(unknown)}")
+                need = {"ex"} | ({"gloss"} if section != "grammar" else set())
+                if section == "redemittel":
+                    need |= {"when"} | ({"register"} if rec.get("register") else set()) | ({"variants"} if rec.get("variants") else set())
+                if section == "grammar":
+                    told = course["narration"].get(uid, {}).get(rid)
+                    if (isinstance(told, dict) and told.get("en")) or isinstance(told, str):
+                        need.add("explain")
+                    if course["more_examples"].get(uid, {}).get(rid):
+                        need.add("more")
+                missing = sorted(need - set(item))
+                require(not missing, f"{where}: missing {', '.join(missing)}")
+                counts = {"ex": len(rec["examples"]), "variants": len(rec.get("variants", [])),
+                          "more": len(course["more_examples"].get(uid, {}).get(rid, []))}
+                for field, value in item.items():
+                    if field in counts:
+                        require(isinstance(value, list) and len(value) == counts[field],
+                                f"{where}: {field} needs {counts[field]} translation(s), one per English one")
+                        for index, text in enumerate(value):
+                            _translated(text, f"{where} {field} [{index}]", latin_free)
+                    else:
+                        _translated(value, f"{where} {field}", latin_free, lines=field == "explain")
+            paragraphs = (lesson.get("story") or {}).get("paragraphs", [])
+            story = unit.get("story", [])
+            require(isinstance(story, list) and len(story) == len(paragraphs),
+                    f"translations {code} {uid}: story needs {len(paragraphs)} paragraph translation(s)")
+            for index, text in enumerate(story):
+                _translated(text, f"translations {code} {uid} story [{index}]", latin_free)
+
+
+def unit_translations(course, uid):
+    """{language: what the translations file gives for this unit}, in the course's order of languages."""
+    return {code: data.get(uid, {}) for code, data in course["translations"].items()}
 
 
 def check_more_examples(course):
@@ -116,10 +203,10 @@ def exact_term(text, term):
     return re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text, re.I) is not None
 
 
-def unit_plan(lesson, voices, narration=None, announcement=None):
+def unit_plan(lesson, voices, narration=None, announcement=None, translations=None):
     """Full listening order (episodes) plus what the app needs: German controls, grammar explanations,
-    sections, the story's sentences per paragraph and the English example clips."""
-    clips, plan = lesson_plan(lesson, voices, narration)
+    sections, the story's sentences per paragraph, the English example clips and those of every translation language."""
+    clips, plan = lesson_plan(lesson, voices, narration, translations)
 
     def add(text):
         clip = speech.make_clip(text, "de", voices)
@@ -179,7 +266,7 @@ def build_course_plan(course):
     for unit in course["units"]:
         lesson = json.loads(unit["lesson"].read_text(encoding="utf-8-sig"))
         clips, plan = unit_plan(lesson, course["voices"], unit_narration(course, unit["id"]),
-                                f"{course['title']}. {unit['label']}.")
+                                f"{course['title']}. {unit['label']}.", unit_translations(course, unit["id"]))
         all_clips.update(clips)
         units[unit["id"]] = plan
     plan = {"voices": course["voices"], "units": units, "texts": {cid: clip.text for cid, clip in all_clips.items()}}
