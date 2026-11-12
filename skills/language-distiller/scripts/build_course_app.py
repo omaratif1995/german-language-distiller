@@ -469,13 +469,17 @@ APP_CSS = r"""
   .bar{position:sticky;top:0;z-index:5;margin:-24px -16px 18px;padding:10px 16px;background:rgba(23,25,31,.95);
        backdrop-filter:blur(8px);border-bottom:1px solid var(--line);display:none;gap:8px;flex-wrap:wrap;align-items:center}
   .js .bar{display:flex}
-  @media(max-width:520px){.bar{margin:-14px -9px 14px;padding:10px 9px}}
+  .bar:not(.sub){margin-bottom:10px}
+  .bar.sub{position:static;margin:0 0 14px;padding:0;background:none;backdrop-filter:none;border:0}
+  @media(max-width:520px){.bar{margin:-14px -9px 14px;padding:10px 9px}.bar:not(.sub){margin-bottom:10px}.bar.sub{margin:0 0 12px;padding:0}}
   .bar select,.bar input,.bar button,.pr select,.pr button{font:inherit;font-size:15px;color:var(--ink);background:var(--card);
        border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:42px}
   .tabs{display:flex;gap:6px;flex-basis:100%}
   .tabs button{flex:1;font-weight:700;cursor:pointer}
   .tabs button[aria-pressed="true"],.pr .chips button[aria-pressed="true"]{background:var(--accent);color:#1a1030;border-color:var(--accent)}
   .bar select{flex:1 1 200px;min-width:0}
+  @media(max-width:360px){.tabs{gap:4px}.tabs button{min-width:0;padding:8px 2px;font-size:14px}       /* four tabs on a 320 px phone, */
+    .bar select{flex-basis:150px}}                                                                     /* and ‹ picker › in one row */
   .bar input{flex:1 1 160px;min-width:0}
   .bar .nav{width:44px;cursor:pointer}
   .bar .hits{flex-basis:100%;font-size:13px;color:var(--muted);display:none}
@@ -526,6 +530,35 @@ APP_CSS = r"""
   .h-en[dir="rtl"]{font-style:normal;text-align:right;line-height:1.8;font-size:16.5px}
   .h-en.long{font-size:14px}
   .bar .tl-pill{width:auto;min-width:48px;padding:6px 10px;font-weight:700;font-size:14px}
+  .plan{margin:0 0 20px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--card);display:flex;flex-direction:column;gap:8px}
+  .searching .plan,.searching .unit-end{display:none}
+  .fc.studying .front{display:none}
+  .study-open{border:0;border-radius:999px;padding:8px 15px;font:inherit;font-size:14px;font-weight:800;min-height:38px;background:#f2d36b;color:#1a1030;cursor:pointer}
+  .unit-end{margin:26px 0 8px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--card);display:flex;flex-direction:column;gap:8px}
+  .unit-end b{font-size:16px}
+  .unit-end span{color:var(--muted);font-size:14px;line-height:1.45}
+  .unit-end .ue-row{display:flex;gap:8px;flex-wrap:wrap}
+  .unit-end button{flex:1 1 140px;font:inherit;font-weight:700;font-size:15px;min-height:48px;border-radius:12px;cursor:pointer;color:var(--ink);background:rgba(255,255,255,.05);border:1px solid var(--line)}
+  .unit-end button.main{background:var(--accent);color:#1a1030;border-color:var(--accent)}
+  .plan .plan-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .plan .plan-t{font-size:17px;font-weight:800}
+  .plan .plan-fire{font-size:14px;font-weight:700;color:#f6ad55;white-space:nowrap}
+  .plan .plan-sub{color:var(--muted);font-size:14px;line-height:1.45;margin:0}
+  .plan .plan-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;color:var(--ink);background:rgba(255,255,255,.04);
+       border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-height:56px;cursor:pointer}
+  .plan .plan-row.main{background:var(--accent);color:#1a1030;border-color:var(--accent)}
+  .plan .plan-row.main small{color:#3a2a5e}
+  .plan .plan-row.done{opacity:.72}
+  .plan .plan-ic{font-size:22px;width:30px;text-align:center;flex:none}
+  .plan .plan-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+  .plan .plan-tx b{font-size:16px}
+  .plan .plan-tx small{color:var(--muted);font-size:13px;line-height:1.35}
+  .plan .plan-go{font-size:18px;opacity:.7;flex:none}
+  .plan ol{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+  .plan ol li{display:flex;gap:10px;align-items:flex-start;font-size:14.5px;line-height:1.45}
+  .plan ol li i{flex:none;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#1a1030;font-style:normal;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .plan ol li span{color:var(--muted)} .plan ol li b{color:var(--ink)}
+  .plan .plan-ok{font:inherit;font-weight:800;font-size:16px;min-height:48px;border-radius:12px;cursor:pointer;background:var(--accent);color:#1a1030;border:0}
   .tl-first{display:flex;flex-direction:column;gap:8px;margin:0 0 18px;padding:14px;border:1px solid var(--accent);border-radius:14px;background:rgba(36,39,46,.75)}
   .tl-first b{font-size:16px}
   .tl-first span{color:var(--muted);font-size:14px;line-height:1.45}
@@ -598,8 +631,9 @@ APP_CSS = r"""
   .dock{position:sticky;bottom:0;z-index:4;margin:0 -16px;padding:12px 16px env(safe-area-inset-bottom);
         background:linear-gradient(rgba(23,25,31,0),var(--bg) 12px)}
   @media(max-width:520px){.dock{margin:0 -9px;padding-left:9px;padding-right:9px}}
-  .acts{display:flex;gap:10px}
+  .acts{display:flex;flex-wrap:wrap;gap:10px}
   .acts button{flex:1;min-height:56px;font-size:17px;font-weight:700;border-radius:14px;cursor:pointer}
+  .acts button.wide{flex-basis:100%}                 /* a third button gets its own row: three long words side by side break on a small phone */
   .acts .main{background:var(--accent);color:#1a1030;border-color:var(--accent)}
   .acts .again{background:#5b2333;border-color:#9f3a55;color:#ffe4ea}
   .acts .good{background:#145c4d;border-color:#34d399;color:#e7fff6}
@@ -765,6 +799,7 @@ __LISTEN__
     tlPill.setAttribute('aria-label','Übersetzung'+': '+(TLN[tl()]||tl())); tlPill.title=TLN[tl()]||tl(); }
   function tlChanged(){ var code=tl(); d.documentElement.setAttribute('data-tl',code); gamesIn(code); pill();
     if(tlFirst) tlFirst.hidden=true;
+    plan();
     if(d.body.classList.contains('mode-practice')){ renderSettings(); render(); }
     heard(playing()); }
   if(tlPill) tlPill.addEventListener('click',function(){ setTL(TLS[(TLS.indexOf(tl())+1)%TLS.length]); });
@@ -804,12 +839,13 @@ __LISTEN__
   /* ---------------- tabs ---------------- */
   var tabs={l:d.getElementById('tab-l'),h:d.getElementById('tab-h'),p:d.getElementById('tab-p'),g:d.getElementById('tab-g')};
   if(!tabs.h) delete tabs.h;                                         /* an app without audio has nothing to hear */
-  function mode(m){ if(!tabs[m]) m='l';
+  function mode(m,opt){ if(!tabs[m]) m='l'; opt=(m==='p'&&opt)||{};
+    weak=!!opt.weak; study=opt.study||null; solo=opt.solo||null; if(study) bList=[];   /* the tab itself always means a plain round */
     var away=/mode-(practice|games)/.test(d.body.className), cur=playing();   /* Lernen and Hören share a session; Üben and Spielen make their own sounds */
     if(m==='p'||m==='g'||away) stopAll(); Games.stop();
     d.body.classList.toggle('mode-practice',m==='p'); d.body.classList.toggle('mode-games',m==='g'); d.body.classList.toggle('mode-listen',m==='h');
     Object.keys(tabs).forEach(function(k){ tabs[k].setAttribute('aria-pressed',String(k===m)); });
-    ui.tab=m; save('ui',ui); if(m==='p') start(); if(m==='g') Games.open(); if(m==='h') hearPage(); window.scrollTo(0,0);
+    ui.tab=m; save('ui',ui); if(m==='p') start(); if(m==='g') Games.open(); if(m==='h') hearPage(); if(m==='l'){ plan(); unitProgress(); } window.scrollTo(0,0);
     if(m==='l'&&cur&&playing()===cur){ if(cur.o.unit!==sel.value) show(cur.o.unit,false); if(cur.cur>=0) follow(spot(cur.items[cur.cur]));   /* read along where the course is */
       var lit=d.querySelector('.sn.lit'); if(lit) lit.scrollIntoView({block:'center'}); } }
   Object.keys(tabs).forEach(function(k){ tabs[k].addEventListener('click',function(){ mode(k); }); });
@@ -875,11 +911,22 @@ __LISTEN__
          auto:ui.auto!==false, round:(ui.round===undefined?10:ui.round), browse:!!ui.browse};
   var queue=[], cur=null, shown=false, missed=false, view='card', ses={inRound:0,rg:0,ra:0}, bList=[], bIdx=0;
   var busy=false, readyAt=0, undo=null, undoTimer=null;
+  var weak=false, study=null, solo=null;                           /* a round of weak cards; a guided lesson (its unit's id); a round for one lesson */
+  function browsing(){ return S.browse||!!study; }
+  function weakCards(){ return CARDS.filter(function(c){ var s=state[c.id]; return s&&s[0]<=1&&S.kinds.indexOf(c.k)>=0; }); }   /* missed lately: box 0 or 1 */
   var fc=d.getElementById('fc'), acts=d.getElementById('acts'), undoBox=d.getElementById('undo');
   function persist(){ ui.units=S.units; ui.kinds=S.kinds; ui.dir=S.dir; ui.perDay=S.perDay; ui.auto=S.auto; ui.round=S.round; ui.browse=S.browse; save('ui',ui); }
-  function pool(){ return CARDS.filter(function(c){return S.units.indexOf(c.u)>=0 && S.kinds.indexOf(c.k)>=0;}); }
+  /* new cards come from the chosen lessons, or, in a round a lesson's own button started, from that lesson (the choice stays as it is) */
+  function pool(){ var us=solo?[solo]:S.units; return CARDS.filter(function(c){return us.indexOf(c.u)>=0 && S.kinds.indexOf(c.k)>=0;}); }
+  function graded(opt){ if(S.browse){ S.browse=false; persist(); } mode('p',opt); }   /* a round from a button is one with ✓ and ✗, whatever Modus was left on */
+  function keepPlace(){ (ui.at=ui.at||{})[study]=bIdx; ui.walk=study; save('ui',ui); }   /* each lesson's place: Weiterlernen goes on from this card */
   function newDay(){ var T=today(); if(meta.day!==T){ meta.day=T; meta.fresh=0; meta.extra=0; meta.done=0; meta.good=0; save('meta',meta); } }
-  function start(){ newDay(); dropUndo(); renderSettings();
+  function start(){ newDay(); dropUndo(); if(S.browse) weak=false;                   /* Durchblättern, chosen during a weak round, leaves that round */
+    renderSettings();
+    if(study){ if(!bList.length||bList[0].u!==study){ bList=CARDS.filter(function(c){ return c.u===study; });
+        bIdx=Math.max(0,Math.min((ui.at&&ui.at[study])||0,bList.length-1)); }                           /* on from where the learner stopped */
+      cur=bList[bIdx]||null; shown=true; missed=false; view=cur?'card':'empty'; render(); if(cur){ keepPlace(); autoStudy(); } return; }
+    if(weak){ queue=weakCards(); ses={inRound:0,rg:0,ra:0}; if(!queue.length){ cur=null; view='done'; render(); return; } next(); return; }
     if(S.browse){ bList=pool(); bIdx=Math.min(bIdx,Math.max(0,bList.length-1)); cur=bList[bIdx]||null; shown=false; missed=false; view=cur?'card':'empty'; render(); return; }
     var T=today(), p=pool();
     /* due cards come from every lesson, so choosing lessons never pauses what you already learn; new ones from the chosen */
@@ -893,31 +940,39 @@ __LISTEN__
     fc.style.transition='none'; render(); void fc.offsetWidth; fc.style.transition=''; fc.classList.add('enter');
     if(cur) autoFront(); }
   function autoFront(){ if(S.auto && cur.k==='w' && S.dir==='de' && cur.fa) clip(cur.fa); }
+  function autoStudy(){ if(!S.auto||!cur) return; if(cur.k==='w'&&cur.fa) clip(cur.fa); else if(cur.k==='r'&&cur.ba) clip(cur.ba); }   /* the lesson is read aloud as it goes */
   function autoBack(){ if(!S.auto) return; if(cur.k==='w' && S.dir==='en' && cur.fa) clip(cur.fa); else if(cur.k==='r' && cur.ba) clip(cur.ba); }
   function topbar(){ var t=d.getElementById('tr-count'), bar=d.getElementById('tr-fill'), st=d.getElementById('tr-streak');
-    if(S.browse){ t.textContent=(bList.length?(bIdx+1)+' / '+bList.length:'0'); bar.style.width=(bList.length?100*(bIdx+1)/bList.length:0)+'%'; }
+    if(browsing()){ t.textContent=(bList.length?(bIdx+1)+' / '+bList.length:'0'); bar.style.width=(bList.length?100*(bIdx+1)/bList.length:0)+'%'; }
     else { var left=queue.length+(cur && view==='card'?1:0), all=(meta.done||0)+left; t.textContent='Heute '+(meta.done||0)+' / '+all; bar.style.width=(all?100*(meta.done||0)/all:0)+'%'; }
-    st.textContent=meta.streak>0 && meta.last>=today()-1 ? '🔥 '+meta.streak : ''; }
+    st.textContent=study?'📖 Lektion lernen':weak?'🔁 Schwierige Karten':solo?'🎯 Nur '+(CFG.labels[solo]||solo):meta.streak>0 && meta.last>=today()-1 ? '🔥 '+meta.streak : ''; }
   function msg(big,title,lines){ return '<div class="msg"><div class="big">'+big+'</div><h3>'+title+'</h3>'+lines.map(function(l){return '<p>'+l+'</p>';}).join('')+'</div>'; }
-  function render(){ topbar(); fc.className='fc'; fc.style.transform='';
+  function render(){ topbar(); fc.className='fc'+(study?' studying':''); fc.style.transform='';
+    if(view==='studyDone'){ var nx=ORDER[ORDER.indexOf(study)+1];
+      fc.innerHTML=msg('🎉','Lektion durchgegangen',['Du hast alle '+bList.length+' Karten gesehen.','Jetzt kurz üben, damit es hängen bleibt.']);
+      acts.innerHTML='<button type="button" class="main" data-a="studytest">Jetzt üben</button>'+(nx?'<button type="button" data-a="studynext">Nächste Lektion</button>':'')+'<button type="button" data-a="studyagain">Nochmal ansehen</button>'; return; }
     if(view==='empty'){ fc.innerHTML=msg('🗂️','Keine Karten','<span>Wähle in den Einstellungen Lektionen und Teile.</span>'.split('|')); acts.innerHTML=''; return; }
+    if(view==='done'&&weak){ fc.innerHTML=msg('💪','Geschafft!',[meta.done?'Die schwierigen Karten sind durch.':'Du hast gerade keine schwierigen Karten.']);
+      acts.innerHTML='<button type="button" class="main" data-a="home">Zurück zur Übersicht</button>'; return; }
     if(view==='done'){ var more=pool().some(function(c){return !state[c.id];});
       fc.innerHTML=msg('🎉','Fertig für heute!',[meta.done?meta.done+' Karten geübt · '+meta.good+' gewusst':'Heute ist nichts fällig.', meta.streak>1?'🔥 '+meta.streak+' Tage in Folge':'Bis morgen!']);
-      acts.innerHTML=(more?'<button type="button" class="main" data-a="extra">+10 neue Karten</button>':'')+'<button type="button" data-a="browse">Durchblättern</button>'; return; }
+      acts.innerHTML=(more?'<button type="button" class="main" data-a="extra">+10 neue Karten</button>':'')+'<button type="button" data-a="browse">Durchblättern</button>'+
+        (solo?'<button type="button" class="wide" data-a="home">Übersicht</button>':''); return; }
     if(view==='round'){ fc.innerHTML=msg('💪','Runde geschafft!',['✓ '+ses.rg+' gewusst · ✗ '+ses.ra+' nochmal','Noch '+(queue.length+(cur?1:0))+' Karten für heute']);
       acts.innerHTML='<button type="button" class="main" data-a="resume">Weiter</button><button type="button" data-a="pause">Pause</button>'; return; }
     if(view==='paused'){ fc.innerHTML=msg('☕','Gute Pause!',['Dein Fortschritt ist gespeichert.']); acts.innerHTML='<button type="button" class="main" data-a="resume">Weiter lernen</button>'; return; }
     var reverse=(cur.k==='w' && S.dir==='en'), cls={w:'voc',g:'rule',r:'phrase'}[cur.k];
     fc.innerHTML='<div class="tag">'+cur.l+' · '+KIND[cur.k]+'</div><div class="front">'+(reverse?cur.r:cur.f)+'</div>'+
       (shown?'<div class="back"><article class="'+cls+'">'+cur.b+'</article></div>':'<div class="peek">Tippen = Antwort ansehen</div>');
+    if(study){ acts.innerHTML='<button type="button" data-a="prev" aria-label="Zurück">‹</button><button type="button" class="main" data-a="nxt">'+(bIdx>=bList.length-1?'Fertig ›':'Weiter ›')+'</button>'; return; }
     if(S.browse){ acts.innerHTML='<button type="button" data-a="prev" aria-label="Zurück">‹</button><button type="button" class="main" data-a="flip">'+(shown?'Verstecken':'Antwort zeigen')+'</button><button type="button" data-a="nxt" aria-label="Weiter">›</button>'; return; }
     acts.innerHTML=missed?'<button type="button" class="main" data-a="go">Weiter ›</button>'
       :'<button type="button" class="again" data-a="again">✗ Nochmal</button><button type="button" class="good" data-a="good">✓ Gewusst</button>'; }
 
   /* one tap per card: ✓ = known, next card (its answer stays below for a moment, with undo);
      ✗ = not known, the answer opens, then Weiter; a tap on the card only peeks */
-  function peek(){ if(view!=='card'||!cur||missed) return; shown=!shown; render(); if(shown) autoBack(); }
-  function canGrade(){ return !busy && view==='card' && !!cur && !missed && !S.browse && Date.now()>=readyAt; }
+  function peek(){ if(view!=='card'||!cur||missed||study) return; shown=!shown; render(); if(shown) autoBack(); }
+  function canGrade(){ return !busy && view==='card' && !!cur && !missed && !browsing() && Date.now()>=readyAt; }
   function grade(ok){ var T=today(), s=state[cur.id], isNew=!s,
       snap={card:cur, s:s?s.slice():null, meta:JSON.stringify(meta), ses:JSON.stringify(ses), queue:queue.slice()};
     if(isNew){ meta.fresh++; }
@@ -944,22 +999,29 @@ __LISTEN__
     if(u.s) state[u.card.id]=u.s; else delete state[u.card.id];
     meta=JSON.parse(u.meta); ses=JSON.parse(u.ses); queue=u.queue; cur=u.card; shown=true; missed=false; view='card';
     save('srs',state); save('meta',meta); render(); autoBack(); }
-  function browseMove(n){ bIdx=Math.max(0,Math.min(bList.length-1,bIdx+n)); cur=bList[bIdx]; shown=false; stopAll(); render(); }
+  function browseMove(n){ if(study&&bIdx+n>=bList.length){ stopAll(); cur=null; view='studyDone';
+      (ui.read=ui.read||{})[study]=1; if(ui.at) delete ui.at[study]; save('ui',ui); render(); return; }   /* this lesson is read: Weiterlernen names another */
+    bIdx=Math.max(0,Math.min(bList.length-1,bIdx+n)); cur=bList[bIdx]; shown=!!study; stopAll(); render(); if(study){ keepPlace(); autoStudy(); } }
   acts.addEventListener('click',function(e){ var b=e.target.closest('button'); if(!b) return; var a=b.getAttribute('data-a');
     if(a==='good') good(); else if(a==='again') again(); else if(a==='go') advance(); else if(a==='flip') peek();
     else if(a==='resume'){ next(); } else if(a==='pause'){ dropUndo(); view='paused'; render(); }
     else if(a==='extra'){ meta.extra+=10; save('meta',meta); start(); }
     else if(a==='browse'){ S.browse=true; persist(); start(); }
-    else if(a==='prev') browseMove(-1); else if(a==='nxt') browseMove(1); });
+    else if(a==='prev') browseMove(-1); else if(a==='nxt') browseMove(1);
+    else if(a==='studytest') graded({solo:study});                                                           /* learned, now test it: this lesson, this round */
+    else if(a==='studynext'){ var nu=ORDER[ORDER.indexOf(study)+1]; if(nu){ study=nu; bList=[]; show(nu,false); start(); } }
+    else if(a==='studyagain'){ bIdx=0; start(); }
+    else if(a==='home') mode('l'); });
   /* tap = peek, swipe right = ✓, swipe left = ✗; after ✗ a swipe either way = Weiter */
   var sx=0, sy=0, dx=0, dragging=false;
   fc.addEventListener('pointerdown',function(e){ if(e.target.closest('button,details')||view!=='card') return; dragging=true; sx=e.clientX; sy=e.clientY; dx=0; fc.classList.add('dragging');
     try{ fc.setPointerCapture(e.pointerId); }catch(err){} });   /* a mouse swipe may leave the window */
   fc.addEventListener('pointermove',function(e){ if(!dragging) return; dx=e.clientX-sx; var dy=e.clientY-sy;
-    if(!S.browse && Math.abs(dx)>Math.abs(dy)){ fc.style.transform='translateX('+dx+'px) rotate('+(dx/28)+'deg)';
+    if(!browsing() && Math.abs(dx)>Math.abs(dy)){ fc.style.transform='translateX('+dx+'px) rotate('+(dx/28)+'deg)';
       if(!missed){ fc.classList.toggle('hint-good',dx>40); fc.classList.toggle('hint-again',dx<-40); } } });
   function end(e){ if(!dragging) return; dragging=false; fc.classList.remove('dragging'); var dy=(e&&e.clientY!==undefined)?e.clientY-sy:0;
-    if(!S.browse && Math.abs(dx)>80){
+    if(study && view==='card' && Math.abs(dx)>80 && Math.abs(dx)>Math.abs(dy)){ browseMove(dx<0?1:-1); dx=0; return; }      /* swipe through the lesson */
+    if(!browsing() && Math.abs(dx)>80){
       if(missed && !busy){ fly(dx>0?'fly-right':'fly-left',advance); return; }
       if(canGrade()){ if(dx>0) good(); else again(); return; } }
     fc.style.transform=''; fc.classList.remove('hint-good','hint-again');
@@ -970,7 +1032,7 @@ __LISTEN__
     if((k==='Backspace'||k==='z'||k==='Z') && undo){ e.preventDefault(); doUndo(); return; }
     if(view==='round'||view==='paused'){ if(confirm){ e.preventDefault(); next(); } return; }
     if(view!=='card') return;
-    if(S.browse){ if(k==='ArrowRight') browseMove(1); else if(k==='ArrowLeft') browseMove(-1); else if(confirm){ e.preventDefault(); peek(); } return; }
+    if(browsing()){ if(k==='ArrowRight') browseMove(1); else if(k==='ArrowLeft') browseMove(-1); else if(confirm){ e.preventDefault(); if(study) browseMove(1); else peek(); } return; }
     if(missed){ if(confirm||k==='ArrowRight'||k==='2'){ e.preventDefault(); advance(); } return; }
     if(k==='ArrowRight'||k==='2') good(); else if(k==='ArrowLeft'||k==='1') again();
     else if(confirm){ e.preventDefault(); peek(); } });
@@ -983,11 +1045,11 @@ __LISTEN__
     (CFG.groups||[[null,ORDER]]).forEach(function(g){ var row=d.createElement('div'); row.className='chips'; box.appendChild(row);
       if(g[0]){ var on=g[1].filter(function(u){ return S.units.indexOf(u)>=0; }).length, all=on===g[1].length, b=d.createElement('button');   /* a whole book at once */
         b.type='button'; b.className='grp'; b.textContent=g[0]; b.setAttribute('aria-pressed',all?'true':on?'mixed':'false');
-        b.addEventListener('click',function(){ S.units=S.units.filter(function(u){ return g[1].indexOf(u)<0; }).concat(all?[]:g[1]); persist(); start(); });
+        b.addEventListener('click',function(){ S.units=S.units.filter(function(u){ return g[1].indexOf(u)<0; }).concat(all?[]:g[1]); solo=null; persist(); start(); });
         row.appendChild(b); }
       g[1].forEach(function(u){ var b=d.createElement('button'); b.type='button'; b.textContent=CFG.units.filter(function(x){ return x[0]===u; })[0][1];
         b.setAttribute('aria-pressed',String(S.units.indexOf(u)>=0));
-        b.addEventListener('click',function(){ var i=S.units.indexOf(u); if(i>=0) S.units.splice(i,1); else S.units.push(u); persist(); start(); });
+        b.addEventListener('click',function(){ var i=S.units.indexOf(u); if(i>=0) S.units.splice(i,1); else S.units.push(u); solo=null; persist(); start(); });   /* the learner's own choice ends a one-lesson round */
         row.appendChild(b); }); }); }
   function renderSettings(){
     unitChips();
@@ -1008,7 +1070,7 @@ __LISTEN__
       CARDS.forEach(function(c){ if(g[1].indexOf(c.u)<0||S.kinds.indexOf(c.k)<0) return; var s=state[c.id];
         if(!s) n.neu++; else if(s[0]<=2) n.lern++; else if(s[0]<=4) n.sicher++; else n.fest++; });
       line.className='line'; line.textContent=(g[0]?g[0]+': ':'')+'Neu '+n.neu+' · Lerne ich '+n.lern+' · Sicher '+n.sicher+' · Fest '+n.fest; stat.appendChild(line); }); }
-  d.getElementById('all-u').addEventListener('click',function(){ S.units=S.units.length===ORDER.length?[]:ORDER.slice(); persist(); start(); });
+  d.getElementById('all-u').addEventListener('click',function(){ S.units=S.units.length===ORDER.length?[]:ORDER.slice(); solo=null; persist(); start(); });
   d.getElementById('save-btn').addEventListener('click',function(){
     var blob=new Blob([JSON.stringify({v:2,key:K,state:state,meta:meta,games:load('games',{})})],{type:'application/json'}), a=d.createElement('a');
     a.href=URL.createObjectURL(blob); a.download=K+'-fortschritt-'+new Date().toISOString().slice(0,10)+'.json'; d.body.appendChild(a); a.click(); a.remove(); });
@@ -1033,6 +1095,56 @@ __LISTEN__
       alert(n?(n===1?'1 Karte aus der Sicherung übernommen.':'{n} Karten aus der Sicherung übernommen.'.replace('{n}',n))+' '+'Dein Fortschritt hier bleibt erhalten.'
              :'In dieser Sicherung ist kein Fortschritt für diese Lektionen.'); };
     r.readAsText(f); });
+
+  /* ---------------- Heute: what to do next, and how far each lesson is ---------------- */
+  /* One card at the top of Lernen. The first time it explains the four tabs in four lines; afterwards it names the next
+     step (Üben with its count, the next lesson with new cards, Hören, Spielen). The lesson picker shows each lesson's progress. */
+  var planBox=d.getElementById('plan'), optText={};
+  function cardsOf(u){ return CARDS.filter(function(c){ return c.u===u; }); }
+  function known(c){ var s=state[c.id]; return !!s && s[0]>=2; }
+  function unitProgress(){ [].forEach.call(sel.options,function(o){ var u=o.value; if(optText[u]===undefined) optText[u]=o.textContent;
+      var all=cardsOf(u), n=all.length, k=all.filter(known).length; o.textContent=optText[u]+(k?' · '+Math.round(100*k/n)+' %':''); }); }
+  function row(cls,ic,title,sub,go,fn){ var b=d.createElement('button'); b.type='button'; b.className='plan-row'+(cls?' '+cls:'');
+    b.innerHTML='<span class="plan-ic" aria-hidden="true">'+ic+'</span><span class="plan-tx"><b>'+title+'</b><small>'+sub+'</small></span><span class="plan-go" aria-hidden="true">'+go+'</span>';
+    b.addEventListener('click',fn); return b; }
+  function plan(){ if(!planBox) return; planBox.innerHTML='';
+    if(tlFirst&&!tlFirst.hidden){ planBox.hidden=true; return; }      /* the language first, then the guide */
+    var T=today(), seen=Object.keys(state).length;
+    if(!seen&&!ui.tour){
+      planBox.innerHTML='<div class="plan-head"><span class="plan-t">So lernst du am besten</span></div>'+
+        '<ol><li><i>1</i><div><b>Hören</b> <span>Dein Ohr gewöhnt sich an die Sprache. Auch mit ausgeschaltetem Bildschirm.</span></div></li>'+
+        '<li><i>2</i><div><b>Lernen</b> <span>Wörter, Regeln, Redemittel und die Geschichte einer Lektion. Tippe auf 🔊, so oft du willst.</span></div></li>'+
+        '<li><i>3</i><div><b>Üben</b> <span>Jeden Tag ein paar Minuten. Die App zeigt dir genau die Karten, die du jetzt wiederholen solltest.</span></div></li>'+
+        '<li><i>4</i><div><b>Spielen</b> <span>Kurze Spiele für Tage ohne Lust.</span></div></li></ol>';
+      var ok=d.createElement('button'); ok.type='button'; ok.className='plan-ok'; ok.textContent='Los geht’s';
+      ok.addEventListener('click',function(){ ui.tour=1; save('ui',ui); plan(); }); planBox.appendChild(ok); planBox.hidden=false; return; }
+    newDay();
+    var due=CARDS.filter(function(c){ var s=state[c.id]; return s&&s[1]<=T&&S.kinds.indexOf(c.k)>=0; }).length,
+        unseen=pool().filter(function(c){ return !state[c.id]; }).length,
+        fresh=Math.min(unseen,Math.max(0,S.perDay+meta.extra-meta.fresh)), left=due+fresh,
+        fire=meta.streak>0&&meta.last>=T-1?'🔥 '+meta.streak+(meta.streak===1?' Tag':' Tage'):'';
+    var head=d.createElement('div'); head.className='plan-head'; head.innerHTML='<span class="plan-t">Heute</span><span class="plan-fire">'+fire+'</span>'; planBox.appendChild(head);
+    var parts=[]; if(due) parts.push(due+(due===1?' Karte':' Karten')+' zum Wiederholen'); if(fresh) parts.push(fresh+' neu');
+    planBox.appendChild(row(left?'main':'done','🧠','Üben',left?parts.join(' · '):'Für heute geschafft ✓',left?'›':'✓',function(){ graded(); }));
+    var hard=weakCards().length;
+    if(hard) planBox.appendChild(row('','🔁','Schwierige Karten',hard+(hard===1?' Karte':' Karten')+', die du zuletzt vergessen hast','›',function(){ graded({weak:true}); }));
+    /* a lesson left half way, at its card (the one walked last, or else the earliest); or else the first lesson not yet
+       read through that still has unseen cards */
+    var read=ui.read||{}, at=ui.at||{}, half=at[ui.walk]>0&&ORDER.indexOf(ui.walk)>=0?ui.walk:ORDER.filter(function(u){ return at[u]>0; })[0],
+        next=half||ORDER.filter(function(u){ return !read[u]&&cardsOf(u).some(function(c){ return !state[c.id]; }); })[0], many=next?cardsOf(next).length:0;
+    if(next) planBox.appendChild(row('','📖','Weiterlernen',escH(optText[next]||CFG.labels[next]||next)+' · '+(half?'Karte '+Math.min(at[next]+1,many)+' von '+many:'Schritt für Schritt'),'›',function(){ studyUnit(next); }));
+    if(tabs.h) planBox.appendChild(row('','🎧','Anhören','Die Lektion hören, auch mit ausgeschaltetem Bildschirm','›',function(){ mode('h'); }));
+    planBox.appendChild(row('','🎮','Spielen','Eine kurze Runde zur Abwechslung','›',function(){ mode('g'); }));
+    planBox.hidden=false; }
+  function studyUnit(u){ show(u,false); mode('p',{study:u}); }
+  d.addEventListener('click',function(e){ var b=e.target.closest('.study-open'); if(b) studyUnit(b.getAttribute('data-unit')); });
+  units.forEach(function(s,i){ var u=s.id, nx=units[i+1], box=d.createElement('div'); box.className='unit-end';
+    box.innerHTML='<b>Lektion geschafft?</b><span>Übe jetzt die Karten dieser Lektion, damit sie hängen bleiben.</span><div class="ue-row"></div>';
+    var rowEl=box.querySelector('.ue-row'), a=d.createElement('button'); a.type='button'; a.className='main'; a.textContent='Diese Lektion üben';
+    a.addEventListener('click',function(){ graded({solo:u}); }); rowEl.appendChild(a);     /* this lesson, this round: the chosen lessons stay as they are */
+    if(nx){ var n=d.createElement('button'); n.type='button'; n.textContent='Nächste Lektion ›'; n.addEventListener('click',function(){ stepUnit(1); }); rowEl.appendChild(n); }   /* as › does: a lesson's own sound stops */
+    s.appendChild(box); });
+  unitProgress(); plan();
 
   /* ---------------- Spielen: five short games per unit, made from its cards ---------------- */
   var Games=(function(){
@@ -1326,13 +1438,16 @@ HEAR = """
 
 FRAME = """<nav class="bar" aria-label="Navigation">
 <div class="tabs"><button type="button" id="tab-l" aria-pressed="true">Lernen</button>__HEAR_TAB__<button type="button" id="tab-p" aria-pressed="false">Üben</button><button type="button" id="tab-g" aria-pressed="false">Spielen</button></div>
+</nav>
+<div class="bar sub lern-only" id="subbar">
 <button class="nav lern-only" id="prev" type="button" aria-label="Vorherige Lektion">‹</button>
 <select class="lern-only" id="pick" aria-label="Lektion wählen">__OPTIONS__</select>
 <button class="nav lern-only" id="next" type="button" aria-label="Nächste Lektion">›</button>
 <button class="nav lern-only tl-pill" id="tl-pill" type="button" hidden></button>
 <input class="lern-only search-only" id="q" type="search" placeholder="Suchen…" aria-label="Suchen">
 <div class="hits lern-only search-only" id="hits"></div>
-</nav>
+</div>
+<!--SUBEND-->
 <noscript><p class="cover">Audio, Üben und Spielen brauchen einen Browser mit JavaScript.</p></noscript>"""
 
 
@@ -1434,9 +1549,11 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
             if unit_tr.get(code):
                 game_tr[code][uid] = game_translations(lesson, unit_tr[code], prof)
         body = re.search(r'<main class="wrap">(.*?)</main>', page, re.S).group(1)
-        if audio:
-            body = body.replace("</header>", f'<div class="listen-row"><button type="button" class="listen-open" data-unit="{uid}">'
-                                             f'{html.escape(ui.get("🎧 Anhören", "🎧 Anhören"))}</button></div></header>', 1)
+        study_open = (f'<button type="button" class="study-open" data-unit="{uid}">'
+                      f'{html.escape(ui.get("▶ Lektion lernen", "▶ Lektion lernen"))}</button>')
+        listen_open = (f'<button type="button" class="listen-open" data-unit="{uid}">'
+                       f'{html.escape(ui.get("🎧 Anhören", "🎧 Anhören"))}</button>') if audio else ""
+        body = body.replace("</header>", f'<div class="listen-row">{study_open}{listen_open}</div></header>', 1)
         title = html.unescape(re.search(r"<h1>(.*?)</h1>", body).group(1))
         options.append((uid, f'<option value="{uid}">{html.escape(label)} · {html.escape(title.split(" – ")[0])}</option>'))
         for kind, cid, inner in re.findall(r'<article class="(voc|rule|phrase)" id="([^"]+)">(.*?)</article>', body, re.S):
@@ -1563,7 +1680,7 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
                                                   f"{names['vocabulary']} · {names['grammar']} · {names['redemittel']}"))
     frame = (language.localize(FRAME, ui).replace("__OPTIONS__", options_html)
              .replace("__HEAR_TAB__", language.localize(HEAR_TAB, ui) if audio else "")
-             .replace("</nav>", "</nav>\n" + EARLY_BAR.replace("__KEY__", config["key"]), 1))
+             .replace("<!--SUBEND-->", EARLY_BAR.replace("__KEY__", config["key"]), 1))
     hear = language.localize(HEAR, ui).replace("__LANG__", prof["code"]) if audio else ""
     early = EARLY_JS.replace("__KEY__", config["key"]).replace("__FIRST__", course["units"][0]["id"]).replace("__TLS__", json.dumps(langs))
     first = ('<div class="tl-first" id="tl-first" hidden><b>' + html.escape(ui.get("Übersetzung", "Übersetzung")) + '</b><span>'
@@ -1583,7 +1700,8 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
 <body><main class="wrap">
 {notice}{frame}
 <div class="lernen">
-{first}<div class="cover"><b>{html.escape(course['title'])}</b>{subtitle}</div>
+{first}<div class="plan" id="plan" hidden></div>
+<div class="cover"><b>{html.escape(course['title'])}</b>{subtitle}</div>
 {''.join(sections)}
 </div>
 {hear}

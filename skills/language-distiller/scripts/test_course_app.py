@@ -684,6 +684,32 @@ class TranslationTests(CourseAppTests.__bases__[0]):
         self.assertIsNotNone(games)
         self.assertIn('"ar"', games.group(1))
 
+    def test_the_start_card_guides_and_the_picker_shows_progress(self):
+        out = self.root / "app.html"
+        build_course_app.build(course_audio.load_course(self.root / "course.json"), out, audio=True, placeholder_audio=True)
+        page = out.read_text(encoding="utf-8")
+        self.assertIn('<div class="plan" id="plan" hidden></div>', page)
+        for text in ("So lernst du am besten", "Weiterlernen", "Für heute geschafft", "unitProgress"):
+            self.assertIn(text, page)
+        self.assertLess(page.index('id="tl-first"'), page.index('id="plan"'))     # the language is asked first, the guide after it
+        self.assertNotIn("UT[next]", page)                                          # UT maps titles to clip ids, never to words
+
+    def test_guided_lesson_weak_cards_and_a_slim_header(self):
+        out = self.root / "app.html"
+        build_course_app.build(course_audio.load_course(self.root / "course.json"), out, audio=False)
+        page = out.read_text(encoding="utf-8")
+        self.assertEqual(page.count('class="study-open"'), 2)                       # a button in each unit's header, audio or not
+        for text in ("Lektion durchgegangen", "Schwierige Karten", "studytest", "unit-end", "weakCards"):
+            self.assertIn(text, page)
+        self.assertNotIn("S.units=[", page)                                         # a lesson's button never rewrites the chosen lessons
+        for text in ("graded({solo:u})", "graded({solo:study})", "graded({weak:true})",   # its round is for this lesson, with ✓ and ✗
+                     "[study]=bIdx", "[study]=1", "' von '+many"):                  # Weiterlernen goes on where the learner stopped
+            self.assertIn(text, page)
+        nav = re.search(r'<nav class="bar".*?</nav>', page, re.S).group(0)
+        self.assertNotIn('id="pick"', nav)                                          # only the tabs stay on top; the picker scrolls away
+        self.assertIn('id="subbar"', page)
+        self.assertLess(page.index('id="pick"'), page.index('id="plan"'))
+
     def test_ltr_runs_only_in_right_to_left_text(self):
         marked = build_course_app.ltr_runs("قل «Termin» الآن", "rtl")
         self.assertIn('<bdi dir="ltr"', marked)
