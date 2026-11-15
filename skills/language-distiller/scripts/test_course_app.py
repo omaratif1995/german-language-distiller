@@ -716,5 +716,88 @@ class TranslationTests(CourseAppTests.__bases__[0]):
         self.assertEqual(build_course_app.ltr_runs("say «Termin» now", "ltr"), "say «Termin» now")
 
 
+DIALOGUE = {"U1": {
+    "title": "Ein Termin", "scene": {"de": "Im Büro, kurz vor Feierabend.", "en": "At the office, shortly before the end of the day."},
+    "people": {"Anna": "de-DE-AmalaNeural", "Ben": "de-DE-ConradNeural"},
+    "lines": [
+        {"who": "Anna", "de": "Hast du morgen einen Termin?", "en": "Do you have an appointment tomorrow?", "uses": [{"card": "v1", "form": "Termin"}]},
+        {"who": "Ben", "de": "Ja, trotz des Regens fahre ich in die Stadt.", "en": "Yes, despite the rain I'm driving into town.",
+         "uses": [{"card": "g1", "form": "trotz des Regens"}]},
+        {"who": "Anna", "de": "Ich wollte fragen, ob du mich mitnimmst.", "en": "I wanted to ask if you'd take me with you.",
+         "uses": [{"card": "e1", "form": "Ich wollte fragen"}]},
+        {"who": "Ben", "de": "Klar, gern.", "en": "Sure, gladly."},
+        {"who": "Anna", "de": "Danke, das ist nett.", "en": "Thanks, that's nice of you."},
+        {"who": "Ben", "de": "Bis morgen um acht.", "en": "See you tomorrow at eight."}]}}
+DIALOGUE_AR = {"scene": "في المكتب، قبل نهاية الدوام بقليل.",
+               "lines": ["هل عندك موعد غدًا؟", "نعم، رغم المطر سأذهب إلى المدينة.", "أردت أن أسأل إن كنت ستأخذني معك.",
+                         "طبعًا، بكل سرور.", "شكرًا، هذا لطيف منك.", "إلى الغد في الثامنة."]}
+
+
+class DialogueTests(CourseAppTests.__bases__[0]):
+    """A dialogue per unit (course.json "dialogues"): checked like the story, shown after it, each line in its speaker's
+    voice, with tools to listen, say it after the voice and take a role; translated like every English text."""
+
+    setUp = TranslationTests.setUp
+    write = TranslationTests.write
+
+    def course(self, talks, arabic=True):
+        told = copy.deepcopy(ARABIC)
+        if arabic:
+            told["U1"]["dialogue"] = copy.deepcopy(DIALOGUE_AR)
+        (self.root / "dialogues.json").write_text(json.dumps(talks, ensure_ascii=False), encoding="utf-8")
+        (self.root / "translations_ar.json").write_text(json.dumps(told, ensure_ascii=False), encoding="utf-8")
+        (self.root / "course.json").write_text(json.dumps(
+            {"title": "Test Kurs", "cache": "_work/audio", "units": self.units, "dialogues": "dialogues.json",
+             "translations": {"ar": "translations_ar.json"}, "private_terms": ["Geheimname"]}, ensure_ascii=False), encoding="utf-8")
+        return course_audio.load_course(self.root / "course.json")
+
+    def test_a_good_dialogue_passes_and_every_gap_is_named(self):
+        self.assertEqual(len(self.course(DIALOGUE)["dialogues"]["U1"]["lines"]), 6)
+        for edit, error in ((lambda t: t["U1"]["lines"].pop(), "at least 6 lines"),
+                            (lambda t: t["U1"]["people"].update(Ben="de-DE-AmalaNeural"), "their own de-"),
+                            (lambda t: t["U1"]["lines"][0]["uses"][0].update(form="Termine"), "absent or inside another word"),
+                            (lambda t: t["U1"]["lines"][0]["uses"].append({"card": "e1", "form": "einen Termin"}), "overlap"),
+                            (lambda t: t["U1"]["lines"][0].update(who="Carla"), "who is one of"),
+                            (lambda t: t["U1"]["lines"][3].update(de="Klar, Geheimname kommt auch."), "private source term"),
+                            (lambda t: t.update(U9=t["U1"]), "unknown unit"),
+                            (lambda t: [line.update(who="Anna") for line in t["U1"]["lines"]], "both people speak")):
+            talks = copy.deepcopy(DIALOGUE)
+            edit(talks)
+            with self.subTest(error=error), self.assertRaisesRegex(course_audio.AudioError, error):
+                self.course(talks)
+        with self.assertRaisesRegex(course_audio.AudioError, "U1 dialogue"):  # every line needs its translation
+            self.course(DIALOGUE, arabic=False)
+
+    def test_the_app_shows_the_dialogue_after_the_story_in_two_voices(self):
+        course = self.course(DIALOGUE)
+        out = self.root / "app.html"
+        build_course_app.build(course, out, audio=True, placeholder_audio=True)
+        page = out.read_text(encoding="utf-8")
+        art = re.search(r'<article class="dialog" id="U1-dialog">.*?</article>', page, re.S).group(0)
+        self.assertLess(page.index('id="U1-story"'), page.index('id="U1-dialog"'))
+        self.assertNotIn('id="U2-dialog"', page)                                  # a unit without one has none
+        self.assertEqual((art.count('class="dl a"'), art.count('class="dl b"')), (3, 3))
+        for cls in ("dlg-play", "dlg-echo", "dlg-hide"):
+            self.assertIn(f'class="{cls}"', art)
+        self.assertEqual(re.findall(r'class="dlg-role" data-who="([^"]+)"', art), ["Anna", "Ben"])
+        self.assertIn("هل عندك موعد غدًا؟", art)                                  # each line in each translation language
+        self.assertIn('class="lw" data-card="v1"', art)                           # the lesson's word, with its meaning
+        steps = json.loads(re.search(r"DLG=(\{.*?\}), UT=", page, re.S).group(1))["U1"]
+        self.assertEqual([s[2] for s in steps], ["U1-dialog", "U1-dialog-scene"] + [f"U1-dialog-l{i}" for i in range(1, 7)])
+        clips, _ = course_audio.build_course_plan(course)
+        self.assertEqual({dict(clips[s[0]].voices)["de"] for s in steps[2:]}, {"de-DE-AmalaNeural", "de-DE-ConradNeural"})
+        self.assertIn("['dlg','🗨️','Dialoge'", page)                               # Hören: every dialogue, one after the other
+        self.assertIn("'Nachsprechen'", page)                                     # and a pause to say each sentence
+        self.assertIn("Sprechen üben", page)                                      # the start card: a little speaking every day
+
+    def test_playback_leaves_the_page_where_the_learner_put_it(self):
+        js, css = build_course_app.LISTEN_JS, build_course_app.AUDIO_CSS
+        self.assertIn("function follow(el,stay,force){ if(!el){", js)            # a title keeps the place being followed
+        self.assertIn("&&reading();", js)                                         # not while the learner taps, scrolls or has the settings open
+        self.assertIn("follow(spot(r.items[r.cur]),!!old)", js)                   # a rebuild for a new setting does not scroll
+        self.assertIn("if(h&&!busy) run(", js)                                    # a word's meaning while something plays: the sound goes on
+        self.assertIn(".lp,.sets{overflow-anchor:none}", css)                     # rebuilt settings rows never pull the page
+
+
 if __name__ == "__main__":
     unittest.main()

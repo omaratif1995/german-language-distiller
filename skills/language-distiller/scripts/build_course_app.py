@@ -28,10 +28,11 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from embed_audio import (AUDIO_CSS, LISTEN_HTML, LISTEN_JS, AudioError, examples_order, explanation_sentences,  # noqa: E402
-                         grammar_order, inject_example_buttons, inject_story_audio, listening_order, number_examples,
-                         play_button, require, sentence_times, story_order, transform_card, words_order)
-from course_audio import build_course_plan, exact_term, ffmpeg_exe, load_course, unit_narration, unit_translations  # noqa: E402
+from embed_audio import (AUDIO_CSS, LISTEN_HTML, LISTEN_JS, AudioError, dialogue_order, examples_order,  # noqa: E402
+                         explanation_sentences, grammar_order, inject_example_buttons, inject_story_audio, listening_order,
+                         number_examples, play_button, require, sentence_times, story_order, transform_card, words_order)
+from course_audio import (build_course_plan, exact_term, ffmpeg_exe, load_course, unit_lesson, unit_narration,  # noqa: E402
+                          unit_translations)
 import language  # noqa: E402
 import speech  # noqa: E402
 import study_pack  # noqa: E402
@@ -101,6 +102,8 @@ def add_audio_buttons(page, lesson, unit_plan, used, prof=None, ui=None):
         used.add(controls["story-title"])
         heads = {rec["id"]: controls[f'{rec["id"]}-head'] for rec in lesson["vocabulary"] + lesson["redemittel"]}
         page = inject_story_audio(page, unit_plan, heads, ui)
+    if lesson.get("dialogue"):                        # its title, situation and lines (dialogue_html places their buttons)
+        used.update(cid for key, cid in controls.items() if key.startswith("dialog-"))
     return page
 
 
@@ -267,6 +270,69 @@ def more_html(gid, more, unit_plan=None, ui=None, translated=None):
                     f'<span class="use">{tr(USE_LABEL[example["use"]])}</span> {study_pack.marked(example)} '
                     f'{english}{"".join(tr_html(code, translated[code][index], "tr", prefix="— ") for code in codes)}</div>')
     return f'<details class="more"><summary>{tr("Mehr Beispiele")} ({len(more)})</summary>{"".join(rows)}</details>'
+
+
+def dialogue_html(lesson, number, unit_plan=None, unit_tr=None, ui=None, prof=None):
+    """The unit's dialogue, after its story: a title, the situation, and one bubble per line with its speaker, its 🔊
+    and its translation (in English and each language of unit_tr). The lesson's words and phrases are underlined
+    with their meaning, as in the story. With audio: Anhören, Nachsprechen and a role for each speaker (Du bist …),
+    and Text verstecken for practising without reading. Ids dialog, dialog-scene and dialog-l<n> (a listening session
+    follows them)."""
+    talk, prof = lesson["dialogue"], prof or language.profile(lesson.get("target_language", "de"))
+    tr, controls = (lambda text: html.escape((ui or {}).get(text, text))), (unit_plan or {}).get("controls", {})
+    codes = sorted(code for code, unit in (unit_tr or {}).items() if unit)
+    told = {code: unit_tr[code].get("dialogue") or {} for code in codes}
+    mark = ' data-tl="en"' if codes else ""
+    hints = {rec["id"]: (f'{rec["article"]} ' if rec.get("article") else "") + f'{rec["lemma"]}: {rec["gloss"]}' for rec in lesson["vocabulary"]}
+    hints.update({rec["id"]: f'{rec["frame"]}: {rec["gloss"]}' for rec in lesson["redemittel"]})
+    tips = {code: {rec["id"]: ((f'{rec["article"]} ' if rec.get("article") else "") + rec.get("lemma", rec.get("frame", "")) + ": "
+                               + (unit_tr[code].get(rec["id"]) or {}).get("gloss", ""))
+                   for rec in lesson["vocabulary"] + lesson["redemittel"] if (unit_tr[code].get(rec["id"]) or {}).get("gloss")}
+            for code in codes}
+    people = list(talk["people"])
+
+    def translated(cls, english, texts):
+        return (f'<span class="{cls}" lang="en"{mark}>{html.escape(english)}</span>'
+                + "".join(tr_html(code, texts[code], cls) for code in codes if texts.get(code)))
+
+    def underlined(line):
+        text, cursor, parts = line["de"], 0, []
+        found = sorted((m.start(), m.end(), use["card"]) for use in line.get("uses", []) if use["card"] in hints
+                       for m in study_pack.exact_matches(text, use["form"])[:1])
+        for start, end, card in found:
+            extra = "".join(f' data-tr-{code}="{html.escape(tips[code][card], quote=True)}"' for code in codes if card in tips[code])
+            head = controls.get(f"{card}-head")
+            extra += f' data-h="{head}"' if head else ""          # a tap says the word, unless something is playing
+            parts += [html.escape(text[cursor:start]),
+                      f'<span class="lw" data-card="{card}" title="{html.escape(hints[card], quote=True)}"{extra}>'
+                      f'{html.escape(text[start:end])}</span>']
+            cursor = end
+        return "".join(parts) + html.escape(text[cursor:])
+
+    parts = [f'<h2><span class="num">{number}</span> {tr("Dialog")}</h2><div class="rule-under"></div>',
+             f'<article class="dialog" id="dialog"><h3>{html.escape(talk["title"])}</h3>']
+    if talk.get("scene"):
+        parts.append(f'<p class="scene" id="dialog-scene"><span class="sc-de">{html.escape(talk["scene"]["de"])}</span>'
+                     f'{translated("sc-tr", talk["scene"]["en"], {code: told[code].get("scene") for code in codes})}</p>')
+    if controls:
+        roles = "".join(f'<button type="button" class="dlg-role" data-who="{html.escape(name, quote=True)}">'
+                        f'{tr("🎭 Du bist")} {html.escape(name)}</button>' for name in people)
+        parts.append(f'<div class="dlg-tools"><button type="button" class="dlg-play">{tr("▶ Anhören")}</button>'
+                     f'<button type="button" class="dlg-echo">{tr("🗣 Nachsprechen")}</button>{roles}'
+                     f'<button type="button" class="dlg-hide" aria-pressed="false">{tr("🙈 Text verstecken")}</button></div>'
+                     f'<p class="dlg-how">{tr("So übst du Sprechen: erst anhören, dann Satz für Satz nachsprechen, dann eine Rolle übernehmen – zuerst mit Text, dann ohne.")}</p>')
+    for index, line in enumerate(talk["lines"], 1):
+        clip = controls.get(f"dialog-l{index}")
+        audio = f' data-audio="{clip}"' if clip else ""
+        side = "a" if line["who"] == people[0] else "b"
+        lines_tr = {code: (told[code].get("lines") or [None] * index)[index - 1] for code in codes}
+        parts.append(f'<div class="dl {side}" id="dialog-l{index}" data-who="{html.escape(line["who"], quote=True)}">'
+                     f'<b class="who">{html.escape(line["who"])}<span class="cue">{tr("🎤 Du bist dran")}</span></b>'
+                     f'<p class="dlp"><span class="ss dls"{audio}>{underlined(line)}</span>'
+                     f'{play_button(clip, "Play line") if clip else ""}</p>'
+                     f'{translated("dtr", line["en"], lines_tr)}</div>')
+    parts.append("</article>")
+    return "".join(parts)
 
 
 def write_explanations(page, lesson, narration, unit_plan=None, cache=None, prof=None, ui=None, unit_tr=None):
@@ -752,6 +818,31 @@ APP_CSS = r"""
   .confetti i{position:absolute;top:-14px;width:9px;height:14px;border-radius:2px;animation:fall linear forwards}
   @keyframes fall{to{transform:translateY(108vh) rotate(600deg)}}
   @media(prefers-reduced-motion:reduce){.fc,.fc.enter,.fc .back,.tr-bar i{transition:none;animation:none}.shake,.b-cell.hint,.b-bingo,.win,.g-run.bump{animation:none}}
+  /* the dialogue: one bubble per line, the second person on the right; listen, repeat, then speak a role */
+  .dialog{background:linear-gradient(180deg,#232a33 0%,#1f242b 100%);border:1px solid var(--line);border-left:5px solid #6ee7b7;border-radius:14px;padding:16px 15px 8px}
+  .dialog h3{margin:0 0 6px;font-size:19px;color:#c9f5e3}
+  .dialog .scene{margin:0 0 12px;color:var(--muted);font-size:14.5px;line-height:1.55}
+  .dialog .scene .sc-tr{display:block;font-style:italic;font-size:13.5px;color:#a9b8c9;margin-top:3px}
+  .dlg-tools{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 8px}
+  .dlg-tools button{font:inherit;font-size:14px;font-weight:700;min-height:40px;padding:6px 13px;border-radius:999px;cursor:pointer;
+       color:var(--ink);background:rgba(255,255,255,.06);border:1px solid var(--line)}
+  .dlg-tools button.dlg-play{background:#0f766e;border-color:#0f766e;color:#ecfdf5}
+  .dlg-tools button.is-playing{background:#0f766e;border-color:#6ee7b7;color:#ecfdf5;animation:pulse 1.6s ease-in-out infinite}
+  .dlg-tools button[aria-pressed="true"]{background:var(--yellow);color:#1a1030;border-color:var(--yellow)}
+  .dlg-how{margin:0 0 14px;font-size:13px;color:var(--muted);line-height:1.5}
+  .dl{margin:0 0 10px;max-width:90%;width:fit-content;padding:9px 12px 8px;border-radius:16px 16px 16px 4px;background:rgba(255,255,255,.055);border:1px solid var(--line)}
+  .dl.b{margin-left:auto;border-radius:16px 16px 4px 16px;background:rgba(110,231,183,.08);border-color:rgba(110,231,183,.28)}
+  .dl .who{display:block;font-size:12px;font-weight:800;letter-spacing:.03em;color:#9fb3c8;margin-bottom:2px}
+  .dl.b .who{color:#7fd6b4}
+  .dl .dlp{margin:0;font-size:16.5px;line-height:1.6}
+  .dl .dlp>.speak-button{margin-left:6px;width:27px;height:27px;font-size:12px}
+  .dl .dtr{display:block;margin-top:3px;font-size:13.5px;font-style:italic;color:#a9b8c9;line-height:1.5}
+  .dl .cue{display:none;margin-left:8px;color:var(--yellow);font-weight:800}
+  .dl.turn{border-color:var(--yellow);box-shadow:0 0 0 3px rgba(242,211,107,.25)}
+  .dl.turn .cue{display:inline}
+  .dialog.hiding .dl.hid .dls{filter:blur(6px);user-select:none;-webkit-user-select:none}
+  @media(max-width:520px){.dialog{padding:14px 12px 6px}.dl{max-width:94%}}
+  @media(prefers-reduced-motion:reduce){.dlg-tools button.is-playing{animation:none}}
 """
 
 # A right-to-left language: cards, game words and the listening line take their direction from their first letter
@@ -763,7 +854,7 @@ APP_JS = r"""
 (function(){
   'use strict';
   var d=document, root=d.documentElement; root.classList.add('js');
-  var AU={}, IDX=__INDEX__, SEQ=__SEQUENCES__, EXS=__EXAMPLES__, WRD=__WORDS__, GRM=__GRAMMAR__, STO=__STORIES__, UT=__TITLES__, CARDS=__CARDS__, ORDER=__ORDER__, CFG=__CONFIG__, G=__GAME__;
+  var AU={}, IDX=__INDEX__, SEQ=__SEQUENCES__, EXS=__EXAMPLES__, WRD=__WORDS__, GRM=__GRAMMAR__, STO=__STORIES__, DLG=__DIALOGS__, UT=__TITLES__, CARDS=__CARDS__, ORDER=__ORDER__, CFG=__CONFIG__, G=__GAME__;
   var K=CFG.key, ARTS=CFG.arts||[], COL=CFG.col||{};                 /* the language's articles and their colours */
   var TLS=CFG.tls||['en'], TLA=CFG.tla||(CFG.en?['en']:[]), TLN=CFG.tln||{en:'English'}, TLD=CFG.tld||{}, TL2=CFG.tls2||{en:'EN'};   /* translation languages: all, those with sound, names, directions, short names */
   var GT=__GAME_TR__, G0=G;                                          /* the games' texts in each translation language, laid over the English */
@@ -846,22 +937,22 @@ __LISTEN__
     d.body.classList.toggle('mode-practice',m==='p'); d.body.classList.toggle('mode-games',m==='g'); d.body.classList.toggle('mode-listen',m==='h');
     Object.keys(tabs).forEach(function(k){ tabs[k].setAttribute('aria-pressed',String(k===m)); });
     ui.tab=m; save('ui',ui); if(m==='p') start(); if(m==='g') Games.open(); if(m==='h') hearPage(); if(m==='l'){ plan(); unitProgress(); } window.scrollTo(0,0);
-    if(m==='l'&&cur&&playing()===cur){ if(cur.o.unit!==sel.value) show(cur.o.unit,false); if(cur.cur>=0) follow(spot(cur.items[cur.cur]));   /* read along where the course is */
+    if(m==='l'&&cur&&playing()===cur){ if(cur.o.unit!==sel.value) show(cur.o.unit,false); if(cur.cur>=0) follow(spot(cur.items[cur.cur]),false,true);   /* read along where the course is */
       var lit=d.querySelector('.sn.lit'); if(lit) lit.scrollIntoView({block:'center'}); } }
   Object.keys(tabs).forEach(function(k){ tabs[k].addEventListener('click',function(){ mode(k); }); });
 
   /* ---------------- Hören: the whole course, a book, or the lessons from one on, unit after unit ---------------- */
   var HMODES=[['all','🎧','Alles','Wörter, Grammatik, Redemittel und Geschichte'],['words','🔤','Wörter','Wörter und Redemittel'],
               ['ex','💬','Beispiele','Alle Beispielsätze'],['gram','🧠','Grammatik','Jede Erklärung, dann ihre Beispiele'],
-              ['story','📖','Geschichten','Die Geschichte, Folge für Folge']];
-  var HLABEL={all:'Alles',words:'Wörter',ex:'Beispiele',gram:'Grammatik',story:'Geschichten'};
+              ['story','📖','Geschichten','Die Geschichte, Folge für Folge'],['dlg','🗨️','Dialoge','Gespräche aus dem Alltag, zum Nachsprechen']];
+  var HLABEL={all:'Alles',words:'Wörter',ex:'Beispiele',gram:'Grammatik',story:'Geschichten',dlg:'Dialoge'};
   var hNow=d.getElementById('h-now'), hModes=d.getElementById('h-modes'), hGo=d.getElementById('h-go');
   function unitSteps(u,m){ var st=stepsOf(m)[u]||[]; return !st.length?[]:m==='all'?st:[[UT[u],0.5,null,0]].concat(st); }   /* each unit opens with its name */
   function playable(list,m,k){ for(;k<list.length;k++) if(unitSteps(list[k],m).length) return k; return -1; }
   function scopeOf(s){ var at=Math.max(0,ORDER.indexOf(sel.value)), g=(CFG.groups||[]).filter(function(x){ return x[0]===s; })[0];
     return s==='one'?[ORDER[at]]:s==='from'?ORDER.slice(at):g?g[1].slice():ORDER.slice(); }
   function courseOpts(m,list,k,at){ var u=list[k];
-    return {each:A.each,laps:1,follow:true,label:HLABEL[m],unit:u,mode:m,at:at,en:!!A.en,tl:tl(),where:CFG.labels[u]||u,course:{list:list},
+    return {each:A.each,laps:1,follow:true,label:HLABEL[m],unit:u,mode:m,at:at,en:!!A.en,tl:tl(),echo:!!A.echo,where:CFG.labels[u]||u,course:{list:list},
       then:function(){ var j=playable(list,m,k+1); if(j<0&&A.loop) j=playable(list,m,0);      /* ⟳ Endlos: the whole choice again */
         return j<0?null:[unitSteps(list[j],m),courseOpts(m,list,j,0)]; }}; }
   function courseRun(m,list,k,at){ k=playable(list,m,k); if(k>=0) run(unitSteps(list[k],m),courseOpts(m,list,k,at||0)); }
@@ -896,6 +987,9 @@ __LISTEN__
     else if(el.classList.contains('phrase')){ part=el.querySelector('.head'); de=part?textOf(part):''; part=trIn(el,'.meaning'); tr=part?part.textContent:''; }
     else if(el.classList.contains('rule')||el.classList.contains('story')){ part=el.querySelector('h3'); de=part?textOf(part):''; }
     else if(el.classList.contains('ss')){ de=textOf(el); part=el.closest('.story-p'); part=part&&trIn(part,'.story-tr p'); tr=part?part.textContent:''; }
+    else if(el.classList.contains('dl')){ part=el.querySelector('.dls'); de=(el.getAttribute('data-who')||'')+': '+(part?textOf(part):''); part=trIn(el,'.dtr'); tr=part?part.textContent:''; }
+    else if(el.classList.contains('scene')){ part=el.querySelector('.sc-de'); de=part?textOf(part):''; part=trIn(el,'.sc-tr'); tr=part?part.textContent:''; }
+    else if(el.classList.contains('dialog')){ part=el.querySelector('h3'); de=part?textOf(part):''; }
     else de=textOf(el);
     d.getElementById('h-where').textContent=r.o.label+' · '+r.o.where; d.getElementById('h-de').textContent=de;
     e.innerHTML=TLD[tl()]==='rtl'?escH(tr).replace(/«[^»]*»/g,'<bdi dir="ltr" lang="'+d.documentElement.lang+'">$&</bdi>'):escH(tr); e.lang=tl(); e.dir=TLD[tl()]||'ltr'; e.classList.toggle('long',tr.length>140); e.hidden=!(showTr()&&tr); hNow.hidden=false; }
@@ -1133,6 +1227,8 @@ __LISTEN__
     var read=ui.read||{}, at=ui.at||{}, half=at[ui.walk]>0&&ORDER.indexOf(ui.walk)>=0?ui.walk:ORDER.filter(function(u){ return at[u]>0; })[0],
         next=half||ORDER.filter(function(u){ return !read[u]&&cardsOf(u).some(function(c){ return !state[c.id]; }); })[0], many=next?cardsOf(next).length:0;
     if(next) planBox.appendChild(row('','📖','Weiterlernen',escH(optText[next]||CFG.labels[next]||next)+' · '+(half?'Karte '+Math.min(at[next]+1,many)+' von '+many:'Schritt für Schritt'),'›',function(){ studyUnit(next); }));
+    var talkU=[next,sel.value].filter(function(u){ return u&&d.getElementById(u+'-dialog'); })[0], talkH=talkU&&d.getElementById(talkU+'-dialog').querySelector('h3');
+    if(talkU) planBox.appendChild(row('','🗨️','Sprechen üben',escH(talkH?talkH.textContent:'')+' · '+'nachsprechen und eine Rolle sprechen','›',function(){ toDialog(talkU); }));   /* a few minutes of speaking, every day */
     if(tabs.h) planBox.appendChild(row('','🎧','Anhören','Die Lektion hören, auch mit ausgeschaltetem Bildschirm','›',function(){ mode('h'); }));
     planBox.appendChild(row('','🎮','Spielen','Eine kurze Runde zur Abwechslung','›',function(){ mode('g'); }));
     planBox.hidden=false; }
@@ -1144,6 +1240,37 @@ __LISTEN__
     a.addEventListener('click',function(){ graded({solo:u}); }); rowEl.appendChild(a);     /* this lesson, this round: the chosen lessons stay as they are */
     if(nx){ var n=d.createElement('button'); n.type='button'; n.textContent='Nächste Lektion ›'; n.addEventListener('click',function(){ stepUnit(1); }); rowEl.appendChild(n); }   /* as › does: a lesson's own sound stops */
     s.appendChild(box); });
+
+  /* ---------------- Dialog: listen, repeat line by line, then speak one role ---------------- */
+  /* ▶ Anhören plays the dialogue (as often as the 🔊 button repeats); 🗣 Nachsprechen leaves a pause after each line to
+     say it; 🎭 Du bist … plays the other person's lines and, at each of the learner's, waits as long as the line takes
+     to say (🎤 Du bist dran), then plays it, so they hear how it sounds. With 🙈 Text verstecken the lines to say are
+     blurred until they have been heard; a tap shows one. */
+  function toDialog(u){ var art=d.getElementById(u+'-dialog'); if(!art) return; if(sel.value!==u){ show(u,false); unitChanged(); }
+    requestAnimationFrame(function(){ window.scrollTo(0,Math.max(0,art.getBoundingClientRect().top+scrollY-80)); }); }   /* far down the lesson: at once */
+  function dlgLines(u){ return (DLG[u]||[]).filter(function(s){ return /-dialog-l\d+$/.test(s[2]); }); }
+  function dlgRun(btn,u,how,who){ var art=d.getElementById(u+'-dialog'); if(!art) return;
+    var items=[], mine={}, all=art.querySelectorAll('.dl'), hide=!!ui.dlgHide&&how!=='play';
+    if(how==='play') items=(DLG[u]||[]).slice();                         /* the title and the situation, then the lines */
+    else dlgLines(u).forEach(function(s){ var el=d.getElementById(s[2]), me=how==='role'&&!!el&&el.getAttribute('data-who')===who;
+      if(me){ items.push([s[0],0.15,s[2],3]); items.push([s[0],0.6,s[2],0]); mine[s[2]]=1; }   /* the learner's turn, then the line */
+      else items.push([s[0],0.45,s[2],how==='echo'?1:0]); });
+    function clean(){ art.classList.remove('hiding'); [].forEach.call(all,function(l){ l.classList.remove('turn','hid'); }); }
+    clean();
+    if(hide){ art.classList.add('hiding'); [].forEach.call(all,function(l){ if(how==='echo'||mine[l.id]) l.classList.add('hid'); }); }
+    run(items,{btn:btn,each:1,laps:how==='play'?A.one:1,follow:true,echo:how==='echo',stop:'⏹ Stopp',
+      label:how==='play'?'Dialog':how==='echo'?'Nachsprechen':'Rollenspiel',
+      onstep:function(i){ var it=items[i], el=it&&d.getElementById(it[2]); [].forEach.call(all,function(l){ if(l!==el) l.classList.remove('turn'); });
+        if(!el||!el.classList.contains('dl')) return; if(it[3]===3) el.classList.add('turn'); else { el.classList.remove('turn'); el.classList.remove('hid'); } },
+      onend:clean}); }
+  function dlgHide(){ [].forEach.call(d.querySelectorAll('.dlg-hide'),function(b){ b.setAttribute('aria-pressed',String(!!ui.dlgHide)); }); }
+  d.addEventListener('click',function(e){ var b=e.target.closest('.dlg-play,.dlg-echo,.dlg-role,.dlg-hide'), box=b&&b.closest('section.unit'); if(!box) return;
+    if(b.classList.contains('dlg-hide')){ ui.dlgHide=!ui.dlgHide; save('ui',ui); dlgHide(); return; }   /* the next round hides; this one goes on */
+    if(R&&R.o.btn===b){ endRun(); return; }                              /* the same button again: stop */
+    dlgRun(b,box.id,b.classList.contains('dlg-play')?'play':b.classList.contains('dlg-echo')?'echo':'role',b.getAttribute('data-who')); });
+  window.addEventListener('click',function(e){ var l=e.target.closest&&e.target.closest('.dialog.hiding .dl.hid');   /* before the sentence's own tap */
+    if(l){ l.classList.remove('hid'); e.stopPropagation(); } },true);
+  dlgHide();
   unitProgress(); plan();
 
   /* ---------------- Spielen: five short games per unit, made from its cards ---------------- */
@@ -1497,7 +1624,7 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
     ui = language.ui_table(prof)
     plan = build_course_plan(course)[1] if audio else None
     css, sections, options, cards = None, [], [], []
-    sequences, examples, stories, games, words, grammar, titles = {}, {}, {}, {}, {}, {}, {}
+    sequences, examples, stories, dialogs, games, words, grammar, titles = {}, {}, {}, {}, {}, {}, {}, {}
     codes = sorted(course.get("translations") or {})          # translation languages beside English
     langs = ["en"] + codes
     carried = [code for code in langs if code != "en" or english]   # whose clips the app carries (--no-english: not English's)
@@ -1509,7 +1636,7 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
         uid, label = unit["id"], unit["label"]
         page = unit["sheet"].read_text(encoding="utf-8")
         require('name="study-pack-status" content="reviewed"' in page, f"{uid}: only reviewed sheets go into the app")
-        lesson = json.loads(unit["lesson"].read_text(encoding="utf-8-sig"))
+        lesson = unit_lesson(course, unit)                  # with its dialogue, from the course's dialogues file
         css = css or re.search(r"<style>(.*?)</style>", page, re.S).group(1)
         unit_plan = plan["units"][uid] if audio else None
         unit_tr = unit_translations(course, uid)
@@ -1523,6 +1650,7 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
             words[uid] = words_order(f"{uid}-", lesson, unit_plan)
             grammar[uid] = grammar_order(f"{uid}-", lesson, unit_plan)
             stories[uid] = story_order(f"{uid}-", unit_plan)
+            dialogs[uid] = dialogue_order(f"{uid}-", unit_plan)
             titles[uid] = unit_plan["title"]
             for steps in (sequences[uid], examples[uid], words[uid], grammar[uid]):
                 for step in steps:
@@ -1549,6 +1677,8 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
             if unit_tr.get(code):
                 game_tr[code][uid] = game_translations(lesson, unit_tr[code], prof)
         body = re.search(r'<main class="wrap">(.*?)</main>', page, re.S).group(1)
+        if lesson.get("dialogue"):                    # after the story: the unit's dialogue, its next numbered section
+            body += dialogue_html(lesson, body.count('<span class="num">') + 1, unit_plan, unit_tr, ui, prof)
         study_open = (f'<button type="button" class="study-open" data-unit="{uid}">'
                       f'{html.escape(ui.get("▶ Lektion lernen", "▶ Lektion lernen"))}</button>')
         listen_open = (f'<button type="button" class="listen-open" data-unit="{uid}">'
@@ -1593,7 +1723,7 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
     used_tr_explain = {code: set(explain_tr[code]) - used_german - used_explain for code in codes}
     carried_tr = set().union(*used_tr.values(), *used_tr_explain.values())
     if audio:                                         # every clip a button or a listening order plays gets embedded
-        named = {cid for orders in (sequences, examples, words, grammar, stories) for steps in orders.values()
+        named = {cid for orders in (sequences, examples, words, grammar, stories, dialogs) for steps in orders.values()
                  for step in steps for cid in step[:1] + step[4:] if cid}
         named |= {cid for chain in re.findall(r'data-(?:audio|chain)="([^"]*)"', "".join(sections)) for cid in chain.split()}
         unsent = sorted(named - used_german - used_explain - carried_tr)
@@ -1667,6 +1797,7 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
           .replace("__GRAMMAR__", compact(grammar))
           .replace("__TITLES__", compact(titles))
           .replace("__STORIES__", compact(stories))
+          .replace("__DIALOGS__", compact(dialogs))
           .replace("__CARDS__", compact(cards))
           .replace("__ORDER__", json.dumps([u["id"] for u in course["units"]]))
           .replace("__CONFIG__", compact(config))

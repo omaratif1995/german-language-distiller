@@ -149,6 +149,8 @@ The target language is always spoken by its own voice (the profile's; German `de
 
 To offer the learner another translation language besides English (for example Arabic, with its own natural voice), add `"translations": {"ar": "translations_ar.json"}` to `course.json`: per unit the translation of every English text, German words marked «…». The app lets the learner choose the language, show it beside each sentence and hear it or not, and repeat each sentence as often as they like (see *Translation languages* in [course-app.md](references/course-app.md)).
 
+For speaking, write `dialogues.json`: per unit one everyday conversation between two people (two voices), using the unit's phrases and grammar the way people speak. The app shows it after the story, with *Anhören*, *Nachsprechen* (a pause after each line) and a role for each speaker; Hören plays all dialogues, and *Nachsprechen* in the sound settings adds the same pause to every session (see [course-app.md](references/course-app.md)).
+
 For more practice with each rule, write `more_examples.json`: per grammar point a few more original examples (six work well), each tagged `daily`, `writing` or `exam`, with its translation and exact targets, in other situations, words and forms than the card's. The app folds them under the grammar card as *Mehr Beispiele* and plays them in *Ganze Lektion*, *Beispiele* and *Grammatik*; the MP3 episodes leave them out (see [course-app.md](references/course-app.md)).
 
 ```text

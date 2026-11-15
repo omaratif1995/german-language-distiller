@@ -52,8 +52,8 @@ def profile(tag="de"):
         missing = sorted(REQUIRED - set(data))
         require(not missing, f"languages/{code}.json lacks {', '.join(missing)}")
         require(data["code"] == code, f"languages/{code}.json names code {data['code']!r}")
-        require(set(data["sections"]) == {"vocabulary", "grammar", "redemittel", "story"},
-                f"languages/{code}.json: sections needs vocabulary, grammar, redemittel and story")
+        require(set(data["sections"]) - {"dialogue"} == {"vocabulary", "grammar", "redemittel", "story"},
+                f"languages/{code}.json: sections needs vocabulary, grammar, redemittel and story (and may name the dialogue)")
         require(set(data["article_colours"]) == set(data["articles"])
                 and set(data["article_colours"].values()) <= {"der", "die", "das"},
                 f"languages/{code}.json: every article needs a colour, one of der, die or das")
@@ -235,6 +235,13 @@ UI_EN = {
         "This browser cannot play the audio format of this app (Opus). Please use Chrome or Firefox, on an iPhone with iOS 18.4 or newer, or open the MP3 version of the app.",
     "Es läuft weiter, wenn der Bildschirm aus ist: Pause, zurück und weiter auch auf dem Sperrbildschirm und am Kopfhörer.":
         "It keeps playing with the screen off: pause, back and next also on the lock screen and your headphones.",
+    # the dialogue and speaking practice
+    "Dialog": "Dialogue", "Dialoge": "Dialogues", "Gespräche aus dem Alltag, zum Nachsprechen": "Everyday conversations, to say after the voice",
+    "▶ Anhören": "▶ Listen", "🗣 Nachsprechen": "🗣 Say it after", "🎭 Du bist": "🎭 You are", "🙈 Text verstecken": "🙈 Hide the text",
+    "🎤 Du bist dran": "🎤 Your turn", "Nachsprechen": "Say it after", "Rollenspiel": "Role play", "aus": "off", "🗣 mit Pause": "🗣 with a pause",
+    "So übst du Sprechen: erst anhören, dann Satz für Satz nachsprechen, dann eine Rolle übernehmen – zuerst mit Text, dann ohne.":
+        "How to practise speaking: listen first, then say each line after the voice, then take a role – first with the text, then without.",
+    "Sprechen üben": "Practise speaking", "nachsprechen und eine Rolle sprechen": "say it after the voice and speak a role",
 }
 
 
@@ -255,6 +262,7 @@ def ui_table(prof):
     title = article_title(prof)
     table.update({"Wortschatz": sections["vocabulary"], "Grammatik": sections["grammar"], "Redemittel": sections["redemittel"],
                   "Geschichte": sections["story"], "▶ Geschichte": "▶ " + sections["story"], "▶ Grammatik": "▶ " + sections["grammar"],
+                  "Dialog": sections.get("dialogue") or table["Dialog"],
                   "Der · Die · Das": title, "⚡ Der · Die · Das": "⚡ " + title})
     return {key: value for key, value in table.items() if key != value}
 

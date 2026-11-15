@@ -29,9 +29,10 @@ import study_pack  # noqa: E402
 
 BYTES_PER_SECOND = 6000   # edge-tts delivers 48 kbit/s constant-bitrate MP3
 STEP = 0.4                # silence granularity in seconds
-COURSE_KEYS = {"title", "subtitle", "narration", "more_examples", "translations", "voices", "cache", "episodes_dir",
-               "new_per_day", "private_terms", "units"}
+COURSE_KEYS = {"title", "subtitle", "narration", "more_examples", "dialogues", "translations", "voices", "cache",
+               "episodes_dir", "new_per_day", "private_terms", "units"}
 MORE_USES = ("daily", "writing", "exam")          # where an extra grammar example is used: everyday life, writing, the exam
+DIALOGUE_MIN_LINES = 6                            # a dialogue: a real conversation, not an exchange of two sentences
 # What a translations file gives per card, beside the English in the lesson (see references/course-app.md):
 # a word: its meaning, its forms line (only where that has English in it) and one translation per example;
 # a grammar point: one translation per example and per extra example, and its explanation (where it has an English one);
@@ -53,6 +54,8 @@ def load_course(path):
     course["narration"] = json.loads((base / narration).read_text(encoding="utf-8-sig")) if narration else {}
     more = course.get("more_examples")
     course["more_examples"] = json.loads((base / more).read_text(encoding="utf-8-sig")) if more else {}
+    talk = course.get("dialogues")
+    course["dialogues"] = json.loads((base / talk).read_text(encoding="utf-8-sig")) if talk else {}
     files = course.get("translations") or {}
     require(isinstance(files, dict), 'translations: {"<language code>": "<file>"}, for example {"ar": "translations_ar.json"}')
     course["translations"] = {code: json.loads((base / name).read_text(encoding="utf-8-sig")) for code, name in sorted(files.items())}
@@ -90,6 +93,7 @@ def load_course(path):
     course["voices"] = {"de": course["profile"]["voice"], "en": speech.DEFAULT_VOICES["en"],
                         **language.narrator(course["profile"]), **(course.get("voices") or {})}
     check_more_examples(course)
+    check_dialogues(course)
     check_translations(course)
     for code in course["translations"]:           # each translation language speaks with its own profile's voice
         course["voices"].setdefault(code, language.profile(code)["voice"])
@@ -129,7 +133,7 @@ def check_translations(course):
             unit = data.get(uid)
             require(isinstance(unit, dict), f"translations {code}: unit {uid} is missing")
             records = {rec["id"]: (section, rec) for section in TRANSLATION_FIELDS for rec in lesson[section]}
-            extra = sorted(set(unit) - set(records) - {"story"})
+            extra = sorted(set(unit) - set(records) - {"story", "dialogue"})
             require(not extra, f"translations {code} {uid}: unknown card(s) {', '.join(extra)}")
             for rid, (section, rec) in records.items():
                 where, item = f"translations {code} {uid} {rid}", unit.get(rid)
@@ -163,6 +167,20 @@ def check_translations(course):
                     f"translations {code} {uid}: story needs {len(paragraphs)} paragraph translation(s)")
             for index, text in enumerate(story):
                 _translated(text, f"translations {code} {uid} story [{index}]", latin_free)
+            talk, told = course["dialogues"].get(uid), unit.get("dialogue")
+            where = f"translations {code} {uid} dialogue"
+            if not talk:
+                require(told is None, f"{where}: the unit has no dialogue")
+                continue
+            require(isinstance(told, dict) and set(told) == ({"scene", "lines"} if talk.get("scene") else {"lines"}),
+                    f'{where}: {{"scene": its translation, "lines": one per line}}' if talk.get("scene")
+                    else f'{where}: {{"lines": one translation per line}}')
+            if talk.get("scene"):
+                _translated(told["scene"], f"{where} scene", latin_free)
+            require(isinstance(told["lines"], list) and len(told["lines"]) == len(talk["lines"]),
+                    f"{where}: lines needs {len(talk['lines'])} translation(s), one per line")
+            for index, text in enumerate(told["lines"]):
+                _translated(text, f"{where} line [{index}]", latin_free)
 
 
 def unit_translations(course, uid):
@@ -189,6 +207,88 @@ def check_more_examples(course):
                     study_pack.target_spans(item, where)     # every target is in the sentence, as a whole word
                 except study_pack.PackError as error:
                     raise AudioError(str(error)) from error
+
+
+def check_dialogues(course):
+    """dialogues: per unit one everyday conversation to listen to, repeat and act out (see references/course-app.md):
+    {"title", "scene": {"de", "en"} (optional), "people": {name: voice} (two people, two voices of the course's
+    language), "lines": [{"who": a name, "de", "en", "uses": [{"card", "form"}]}]}. A use names a card of the unit
+    and the exact form the line uses (a whole word or phrase); words and phrases are underlined, so they must not
+    overlap. No line names the source (private_terms)."""
+    lessons = {u["id"]: json.loads(u["lesson"].read_text(encoding="utf-8-sig")) for u in course["units"]}
+    lang = course["profile"]["code"]
+    for uid, talk in course["dialogues"].items():
+        where = f"dialogues {uid}"
+        require(uid in lessons, f"dialogues names an unknown unit: {uid}")
+        require(isinstance(talk, dict) and {"title", "people", "lines"} <= set(talk) <= {"title", "scene", "people", "lines"},
+                f'{where}: {{"title", "scene", "people", "lines"}} (scene is optional)')
+        require(isinstance(talk["title"], str) and talk["title"].strip(), f"{where}: a title")
+        texts = [talk["title"]]
+        if "scene" in talk:
+            scene = talk["scene"]
+            require(isinstance(scene, dict) and set(scene) == {"de", "en"}
+                    and all(isinstance(v, str) and v.strip() and "\n" not in v for v in scene.values()),
+                    f'{where}: scene is {{"de": the situation in the course\'s language, "en": in English}}')
+            texts.append(scene["de"])
+        people = talk["people"]
+        require(isinstance(people, dict) and len(people) == 2 and all(isinstance(n, str) and n.strip() for n in people),
+                f"{where}: people names the two speakers, {{name: voice}}")
+        voices = list(people.values())
+        require(all(isinstance(v, str) and v.startswith(lang + "-") for v in voices) and voices[0] != voices[1],
+                f"{where}: each speaker needs their own {lang}-… voice, for example de-DE-KatjaNeural and de-DE-ConradNeural")
+        lines = talk["lines"]
+        require(isinstance(lines, list) and len(lines) >= DIALOGUE_MIN_LINES, f"{where}: at least {DIALOGUE_MIN_LINES} lines")
+        sections = {rec["id"]: section for section in ("vocabulary", "grammar", "redemittel") for rec in lessons[uid][section]}
+        for index, line in enumerate(lines):
+            at = f"{where} line [{index}]"
+            require(isinstance(line, dict) and {"who", "de", "en"} <= set(line) <= {"who", "de", "en", "uses"},
+                    f'{at}: {{"who", "de", "en", "uses"}}')
+            require(line["who"] in people, f"{at}: who is one of {', '.join(people)}")
+            for key in ("de", "en"):
+                require(isinstance(line[key], str) and line[key].strip() and "\n" not in line[key], f"{at}: {key} is one line of text")
+            texts.append(line["de"])
+            marks = []
+            for use in line.get("uses", []):
+                require(isinstance(use, dict) and set(use) == {"card", "form"}, f'{at}: a use is {{"card", "form"}}')
+                require(use["card"] in sections, f"{at}: uses unknown card {use['card']}")
+                found = study_pack.exact_matches(line["de"], use["form"])
+                require(found, f"{at}: the form {use['form']!r} of {use['card']} is absent or inside another word")
+                if sections[use["card"]] != "grammar":         # words and phrases are underlined
+                    marks.append((found[0].start(), found[0].end()))
+            marks.sort()
+            require(all(a[1] <= b[0] for a, b in zip(marks, marks[1:])), f"{at}: underlined words and phrases overlap")
+        require(set(people) == {line["who"] for line in lines}, f"{where}: both people speak")
+        for text in texts:
+            for term in course["private_terms"]:
+                require(not exact_term(text, term), f"{where}: names the private source term {term!r}: {text[:60]!r}")
+
+
+def unit_lesson(course, unit):
+    """The unit's lesson, with its dialogue (from the course's dialogues file) where it has one."""
+    lesson = json.loads(unit["lesson"].read_text(encoding="utf-8-sig"))
+    talk = course.get("dialogues", {}).get(unit["id"])
+    if talk:
+        lesson["dialogue"] = talk
+    return lesson
+
+
+def dialogue_notes(course):
+    """Per dialogue: its size and what it uses of the unit, and with the story what the two use together."""
+    notes = []
+    for unit in course["units"]:
+        lesson = unit_lesson(course, unit)
+        talk = lesson.get("dialogue")
+        if not talk:
+            continue
+        said = {use["card"] for line in talk["lines"] for use in line.get("uses", [])}
+        told = {use["card"] for p in (lesson.get("story") or {}).get("paragraphs", []) for use in p.get("uses", [])}
+        words = sum(len(re.findall(r"\w+", line["de"])) for line in talk["lines"])
+        parts = []
+        for section, name in (("vocabulary", "words"), ("grammar", "grammar"), ("redemittel", "phrases")):
+            ids = [rec["id"] for rec in lesson[section]]
+            parts.append(f"{name} {sum(i in said for i in ids)}/{len(ids)} (with the story {sum(i in said | told for i in ids)})")
+        notes.append(f"{unit['id']}: {len(talk['lines'])} lines, {words} words; " + ", ".join(parts))
+    return notes
 
 
 def unit_narration(course, uid):
@@ -264,7 +364,7 @@ def narration_notes(course):
 def build_course_plan(course):
     all_clips, units = {}, {}
     for unit in course["units"]:
-        lesson = json.loads(unit["lesson"].read_text(encoding="utf-8-sig"))
+        lesson = unit_lesson(course, unit)
         clips, plan = unit_plan(lesson, course["voices"], unit_narration(course, unit["id"]),
                                 f"{course['title']}. {unit['label']}.", unit_translations(course, unit["id"]))
         all_clips.update(clips)
@@ -387,6 +487,8 @@ def main(argv=None):
               f"{sum(len(v) for v in course['narration'].values())} points; cache={course['cache']}")
         for note in notes:
             print("NARRATION: " + note)
+        for note in dialogue_notes(course):
+            print("DIALOGUE: " + note)
         if args.command == "plan":
             return 0
         require(args.confirm_external_tts, "Hosted synthesis sends lesson text externally; obtain approval and pass --confirm-external-tts")

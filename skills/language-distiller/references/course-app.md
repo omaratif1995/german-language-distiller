@@ -12,6 +12,7 @@ Write one `course.json` (usually in `_work/`). Paths are relative to the file.
   "subtitle": "Lektion 1–12 · Wortschatz · Grammatik · Redemittel · Geschichte",
   "narration": "narration.json",
   "more_examples": "more_examples.json",
+  "dialogues": "dialogues.json",
   "voices": {"de": "de-DE-KatjaNeural", "en": "en-US-AvaNeural"},
   "cache": "audio",
   "episodes_dir": "../Audio",
@@ -104,6 +105,27 @@ A grammar card's own examples show the rule two or three times. For more practic
 
 In the app the extras wait folded under the card's own examples, as **Mehr Beispiele (6)**, each with its tag, 🔊 and translation. They are read by the examples' voice, not the narrator. *Ganze Lektion*, *Beispiele* and *Grammatik* (in the 🎧 panel and in Hören) play them after the card's examples, with their English under *Deutsch + Englisch*, and open the fold when they get there. The MP3 episodes leave them out, so the episodes stay as long as they were.
 
+## Dialogues (dialogues.json)
+
+The story recycles a unit in a text to read and hear; a dialogue makes it something to **say**. Write `dialogues.json` next to `course.json` and name it there (`"dialogues": "dialogues.json"`): per unit one everyday conversation between two people, in which the unit's phrases, grammar and some of its words are used the way people use them.
+
+```json
+{"U3": {"title": "Ist hier noch frei?",
+        "scene": {"de": "Ein volles Café am Samstag. Ben sucht einen Platz.", "en": "A busy café on a Saturday. Ben is looking for a seat."},
+        "people": {"Anna": "de-DE-AmalaNeural", "Ben": "de-DE-ConradNeural"},
+        "lines": [{"who": "Ben", "de": "Entschuldigung, ist hier noch frei?", "en": "Excuse me, is this seat free?",
+                   "uses": [{"card": "e04", "form": "ist hier noch frei"}]}]}}
+```
+
+- **Lines that people really say.** Write the situation first (who, where, why), then a conversation of about 12–18 lines that someone at this level could have this week: meeting someone again, asking for advice, moving an appointment, a job interview, the doctor, the bank. Each line one or two short sentences, with the small words of speech (*ja, doch, mal, halt*). Use the unit's Redemittel where a speaker would; every grammar point at least once; words where they fit. A line that only shows off a word is a bad line.
+- **Two people, two voices** of the course's language (`people`: name → voice; women and men, younger and older, so they never sound alike). The scene and the title are read by the course's own voice.
+- **`uses`** name a card and the exact form in the line (a whole word or phrase, as in the story): words and phrases are underlined with their meaning, and `course_audio.py plan` reports what each dialogue uses, alone and with the story (`DIALOGUE: U3: 14 lines, 180 words; words 9/40 (with the story 36), grammar 3/3 (with the story 3), phrases 10/18 (with the story 15)`).
+- `course_audio.check_dialogues` refuses fewer than 6 lines, one speaker, two speakers with one voice, a form that is absent or inside another word, overlapping underlines, an unknown card or unit, and any private term. Check the lines for originality as you check examples: no six words in a row from the source (`study_pack.copied_run`, with the line's own phrases protected).
+- With a translation language, its file gives per unit `"dialogue": {"scene": "…", "lines": ["…", one per line]}`.
+- The translations are written, not spoken: the dialogue is there to hear and say the target language, and its sound stays small (each line once, in its speaker's voice).
+
+In the app the dialogue follows the story as the unit's last section, one bubble per line (the second person on the right), each with its speaker, 🔊 and translation. Its tools: **▶ Anhören** (the whole dialogue, as often as the 🔊 button repeats), **🗣 Nachsprechen** (after each line a pause as long as the line, to say it), **🎭 Du bist …** (one per speaker: the app speaks the other person; at each of the learner's lines it marks *🎤 Du bist dran*, waits as long as the line takes to say, then plays it, so they hear how it sounds) and **🙈 Text verstecken** (the lines to say stay blurred until heard; a tap shows one). A line under the tools says how to practise: listen, repeat line by line, then take a role, first with the text, then without.
+
 ## Audio commands
 
 `course_audio.py plan` works offline. It writes `<cache>/plan.json` with each unit's listening order, the German controls (headwords, examples, phrases, variants, story sentences), the grammar explanation chain and the episode announcements, and reports how many clips are not yet in `<cache>/clips`. Clip ids depend on the voices, the spoken runs and their pauses. Unchanged clips are never synthesized twice, and runs shared by several clips are fetched once.
@@ -127,7 +149,7 @@ Requirements: `pip install edge-tts pyspellchecker imageio-ffmpeg` (or a system 
 
 English is the lesson's own gloss language. Any other language with a profile in `languages/` (Arabic, `ar`, is the first) can be added as a translation language, one choice for the whole app: the app's own words stay German, only the translations change.
 
-1. In `course.json`: `"translations": {"ar": "translations_ar.json"}`. The file holds, per unit, the translation of **every English text** of the unit: `{"L01": {"v01": {"gloss", "forms"?, "ex": [...]}, "g01": {"ex", "more"?, "explain"?}, "e01": {"gloss", "when", "register"?, "variants"?, "ex"}, "story": [...]}}`. `course_audio.check_translations` refuses a gap: every unit and card is covered, counts equal the English ones, `explain` exists iff the card has an English-backup narration, `more` iff it has `more_examples`, `variants` iff the record has variants (their usage text only), and the story has one entry per paragraph.
+1. In `course.json`: `"translations": {"ar": "translations_ar.json"}`. The file holds, per unit, the translation of **every English text** of the unit: `{"L01": {"v01": {"gloss", "forms"?, "ex": [...]}, "g01": {"ex", "more"?, "explain"?}, "e01": {"gloss", "when", "register"?, "variants"?, "ex"}, "story": [...], "dialogue": {"scene"?, "lines": [...]}}}` (the dialogue only for a unit that has one). `course_audio.check_translations` refuses a gap: every unit and card is covered, counts equal the English ones, `explain` exists iff the card has an English-backup narration, `more` iff it has `more_examples`, `variants` iff the record has variants (their usage text only), and the story has one entry per paragraph.
 2. **German inside a translation is marked «…»**, and nothing with Latin letters stands outside the marks (names of tenses, abbreviations such as «PDF», lesson references). The German voice speaks what is inside the marks, the translation's own voice the rest (a profile's `voice`; Arabic `ar-SA-ZariyahNeural`; the narrator speaks the explanations, a little slower).
 3. Names of people and places are written the way the learner reads them in their own script, once, the same everywhere (keep a small glossary per course).
 4. `course_audio.py synth --confirm-external-tts` sends the translations' texts to the hosted voice service, like any other text: only with the learner's approval.
@@ -151,24 +173,26 @@ The app has four tabs: **Lernen**, **Hören**, **Üben** and **Spielen** (withou
 - 🔊 on every German headword, example, phrase and variant. **A tap repeats**: by default the clip plays again and again, with a short pause, until the learner taps it again or presses ⏹. The listening panel switches this to 1× or 3×.
 - `🔊 Erklärung` on each grammar point plays its spoken explanation once. With narration, the card shows it written out, and the sentence being spoken lights up (also during *Ganze Lektion*); **EN** plays the English one and opens it under «Auf Englisch».
 - **Mehr Beispiele (6)** under a grammar card's own examples, with `more_examples.json`: folded, so the card stays short; open, each extra example shows its tag (*Alltag*, *Schreiben*, *Prüfung*), 🔊 and translation, and its targets are marked like any example's.
-- The **Geschichte** at the end of each unit: a **🔊 Ganze Geschichte** button on the story header to play the whole story straight through, a 🔊 per paragraph, and a tap on any sentence repeats that sentence. A tap on an underlined word shows its meaning and speaks it.
+- The **Geschichte** at the end of each unit: a **🔊 Ganze Geschichte** button on the story header to play the whole story straight through, a 🔊 per paragraph, and a tap on any sentence repeats that sentence. A tap on an underlined word shows its meaning and speaks it; while something plays, it only shows the meaning, and the sound goes on.
+- The **Dialog** after the story, with `dialogues.json` (see *Dialogues*): listen, say each line after the voice, take a role. The start card offers it every day (**🗨️ Sprechen üben**: the dialogue of the lesson being learnt).
 - **🎧 Anhören** opens a small panel in the unit's header:
   - **▶ Weiter** (once a session was stopped): goes on where it stopped;
-  - five ways to listen: **Ganze Lektion** (German vocabulary and expressions, grammar explained, then the story), **Wörter** (the words and the Redemittel), **Nur Beispiele** (only the German example sentences), **Grammatik** (each explanation, then its examples) and **Geschichte**;
+  - six ways to listen: **Ganze Lektion** (German vocabulary and expressions, grammar explained, then the story and the dialogue), **Wörter** (the words and the Redemittel), **Nur Beispiele** (only the German example sentences), **Grammatik** (each explanation, then its examples), **Geschichte** and **Dialog**;
   - **Übersetzung** (with more than one translation language: see *Translation languages*) a language segment, **👁 anzeigen** (the translation is shown beside every sentence, whether it is spoken or not) and **🔊 vorlesen** (every word or phrase is followed by its meaning and every example by its translation, once, after the German plays; explanations and stories stay German). Hear German only and still read the translation: 👁 on, 🔊 off;
   - **Tempo 0,6× · 0,7× · 0,8× · 0,9× · 1× · 1,2×**: how fast the voices speak, with the pitch kept; one tempo serves the whole app (every 🔊, the sessions, Hören, Üben) and is remembered. While a session plays, the bar's tempo button (*1×*) changes it at once, and the highlighted sentence stays in step;
   - **Wiederholen** a stepper − n + from 1 to 99 (no fixed list of choices: the learner sets whatever number they like): how often each German sentence is played before the next one;
+  - **Nachsprechen aus · 🗣 mit Pause**: after each German sentence (its last play), a pause as long as the sentence and a breath, to say it aloud; listening becomes speaking practice;
   - **Am Ende Einmal · ⟳ Endlos**: stop at the end, or start the unit again;
   - **🔊-Taste 1× · 3× · ∞**: what a single 🔊 tap does.
 
-  The session is joined on the device into one continuous audio track with lock-screen and headphone controls (⏯ ⏮ ⏭), so playback continues when the phone screen turns off; when the screen is on, the current card or sentence is highlighted and scrolled into view. A bar at the bottom shows what is playing, with ⏮ (this sentence again; right at its start, the one before), ⏸ / ▶ (pause, then go on in the same sentence), ⏭ (the next sentence now) and ✕ (end). A 🔊 tap during a session pauses it and plays that clip; when the clip stops, the session waits, paused, in the bar. Settings changed during a session apply at once, and all settings are remembered.
+  The session is joined on the device into one continuous audio track with lock-screen and headphone controls (⏯ ⏮ ⏭), so playback continues when the phone screen turns off; when the screen is on, the current card or sentence is highlighted and scrolled into view, but only while the learner follows it: once they scroll away, tap or scroll in the last few seconds, or have the 🎧 settings open, the highlight moves on without moving the page (until the sentence that plays is in view again; ⏮ ⏭ always go there). A title without a place on the page keeps the place being followed, and a setting changed during a session never moves the page. A bar at the bottom shows what is playing, with ⏮ (this sentence again; right at its start, the one before), ⏸ / ▶ (pause, then go on in the same sentence), ⏭ (the next sentence now) and ✕ (end). A 🔊 tap during a session pauses it and plays that clip; when the clip stops, the session waits, paused, in the bar. Settings changed during a session apply at once, and all settings are remembered.
 
   Pauses separate without dragging: before the same sentence again about 0.8 s after a word and 1.35 s after a sentence; before the next one about 1.5–2 s after an example, less after headwords and story sentences, more at the end of a paragraph. They are measured from the voice: each clip's own lead-in and tail are trimmed when the track is built.
 
 **Hören**: the course to listen to, for the commute or a walk.
-- **Was möchtest du hören?** Five tiles: **Alles** (each unit as in *Ganze Lektion*), **Wörter**, **Beispiele**, **Grammatik** and **Geschichten**. A tap starts; a tap on the one playing stops it.
+- **Was möchtest du hören?** Six tiles: **Alles** (each unit as in *Ganze Lektion*), **Wörter**, **Beispiele**, **Grammatik**, **Geschichten** and **Dialoge**. A tap starts; a tap on the one playing stops it.
 - **Aus welchen Lektionen?** *Nur Lektion 16*, *Ab Lektion 16* (to the end of the course; the lesson is the one in the picker), one chip per book when units have a `group`, or *Alle Lektionen*.
-- **So klingt es:** the same *Sprache*, *Tempo*, *Jeder Satz* and *Am Ende* as the panel, shared with it; *⟳ Endlos* starts the whole choice again.
+- **So klingt es:** the same *Sprache*, *Wiederholen*, *Nachsprechen*, *Tempo* and *Am Ende* as the panel, shared with it; *⟳ Endlos* starts the whole choice again. With *Nachsprechen*, the commute becomes speaking practice: every German sentence, then a pause to say it.
 - Unit after unit, each opening with its spoken name. Each unit is one track, as in the panel, and the next one is built while the last plays, so it goes on at once, also with the screen off; the bar names the unit (*Lektion 14 · 3 / 57*). A card at the top shows what is heard, big: the sentence or word, and its English when the learner listens with English.
 - **▶ Weiter** goes on where a stopped session stopped, across units. Lernen and Hören share a running session: in Lernen it shows the unit being heard, highlights the card and lights the spoken sentence; choosing another lesson does not stop it. Üben and Spielen stop it, since they make their own sounds.
 
