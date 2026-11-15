@@ -4,6 +4,7 @@
     build_course_app.py --course course.json --output Course_App_v1.html              # with audio from the cache
     build_course_app.py --course course.json --output Course_App_v1.html --no-audio   # study, practice and games only
     build_course_app.py --course course.json --output Course_App_v1.html --audio-format opus   # a third smaller sound
+    build_course_app.py --course course.json --web site_v1 --audio-format opus      # an installable web app (web_app.py)
 
 Lernen: every reviewed sheet in course order, with its closing story. A 🔊 tap repeats a word or sentence (until
 tapped again, or 1×/3×), a tap on a story sentence repeats that sentence, and a tap on an underlined story word shows
@@ -12,7 +13,9 @@ its meaning. "🎧 Anhören" opens a small panel: Ganze Lektion, Nur Beispiele o
 stopped. Üben: one card per sheet card, a small spaced-repetition schedule, one tap per card.
 Spielen: five short games per unit made from the same cards (Hör-Bingo, Wortpaare, Satzbau, Der · Die · Das, Was sagt
 man?).
-Audio comes from `course_audio.py synth` and is embedded as base64 so the file works without a network.
+Audio comes from `course_audio.py synth` and is embedded as base64 so the file works without a network. With --web the
+app is a folder for an HTTPS host instead: the same page with its sound in separate files, an install manifest and a
+service worker that keeps the course for offline use and brings updates (see web_app.py).
 See references/course-app.md.
 """
 from __future__ import annotations
@@ -34,6 +37,7 @@ from embed_audio import (AUDIO_CSS, LISTEN_HTML, LISTEN_JS, AudioError, dialogue
 from course_audio import (build_course_plan, exact_term, ffmpeg_exe, load_course, unit_lesson, unit_narration,  # noqa: E402
                           unit_translations)
 import language  # noqa: E402
+import web_app  # noqa: E402
 import speech  # noqa: E402
 import study_pack  # noqa: E402
 
@@ -854,7 +858,7 @@ APP_JS = r"""
 (function(){
   'use strict';
   var d=document, root=d.documentElement; root.classList.add('js');
-  var AU={}, IDX=__INDEX__, SEQ=__SEQUENCES__, EXS=__EXAMPLES__, WRD=__WORDS__, GRM=__GRAMMAR__, STO=__STORIES__, DLG=__DIALOGS__, UT=__TITLES__, CARDS=__CARDS__, ORDER=__ORDER__, CFG=__CONFIG__, G=__GAME__;
+  var AU={}, IDX=__INDEX__, WEB=__WEB__, SEQ=__SEQUENCES__, EXS=__EXAMPLES__, WRD=__WORDS__, GRM=__GRAMMAR__, STO=__STORIES__, DLG=__DIALOGS__, UT=__TITLES__, CARDS=__CARDS__, ORDER=__ORDER__, CFG=__CONFIG__, G=__GAME__;
   var K=CFG.key, ARTS=CFG.arts||[], COL=CFG.col||{};                 /* the language's articles and their colours */
   var TLS=CFG.tls||['en'], TLA=CFG.tla||(CFG.en?['en']:[]), TLN=CFG.tln||{en:'English'}, TLD=CFG.tld||{}, TL2=CFG.tls2||{en:'EN'};   /* translation languages: all, those with sound, names, directions, short names */
   var GT=__GAME_TR__, G0=G;                                          /* the games' texts in each translation language, laid over the English */
@@ -865,12 +869,23 @@ APP_JS = r"""
   /* audio sits in per-unit text blocks after this script; a unit's clips are unpacked on first use, but only once the
      page has read the whole block (a block still being read would give half a clip), and the block's text then goes */
   function parsed(el){ return d.readyState!=='loading'||!!el.nextElementSibling; }
-  function need(id){ if(AU[id]!==undefined) return AU[id]; var k=IDX[id], el=k===undefined?null:d.getElementById('au-'+k);
+  /* the web app (WEB: its block files) fetches a block when one of its clips is first wanted (the service worker keeps
+     them all for offline use); the single file reads them from the page */
+  var GOT={};
+  function lazy(){ return !!WEB; }
+  function fetchBlock(k){ return GOT[k]||(GOT[k]=fetch(WEB.blocks[k]).then(function(r){ if(!r.ok) throw new Error(r.status); return r.text(); })
+    .then(function(t){ t.split(';').forEach(function(p){ var i=p.indexOf(':'); if(i>0&&AU[p.slice(0,i)]===undefined) AU[p.slice(0,i)]=p.slice(i+1); }); })
+    .catch(function(e){ delete GOT[k]; throw e; })); }
+  function need(id){ if(AU[id]!==undefined) return AU[id]; var k=IDX[id], el;
+    if(WEB){ if(k!==undefined) fetchBlock(k).catch(function(){}); return ''; }
+    el=k===undefined?null:d.getElementById('au-'+k);
     if(el && !el.getAttribute('data-read') && parsed(el)){ el.textContent.split(';').forEach(function(p){ var i=p.indexOf(':'); if(i>0) AU[p.slice(0,i)]=p.slice(i+1); });
       el.setAttribute('data-read','1'); el.textContent=''; }
     return AU[id]||''; }
   /* kept once these clips can be read: a unit's sound works as soon as its block is in, not after the whole page */
-  function whenAudio(ids){ return new Promise(function(ok){ (function check(){
+  function whenAudio(ids){ if(WEB){ var ks={}; ids.forEach(function(id){ var k=IDX[id]; if(k!==undefined&&AU[id]===undefined) ks[k]=1; });
+      return Promise.all(Object.keys(ks).map(function(k){ return fetchBlock(k).catch(function(){}); })).then(function(){}); }
+    return new Promise(function(ok){ (function check(){
     if(ids.every(function(id){ var k=IDX[id], el; return k===undefined||AU[id]!==undefined||!!((el=d.getElementById('au-'+k))&&parsed(el)); })) ok();
     else setTimeout(check,120); })(); }); }
   /* an Opus build: decode a tiny Opus clip once, and say so if this browser cannot (the sound would stay silent) */
@@ -879,6 +894,7 @@ APP_JS = r"""
     try{ var C=window.OfflineAudioContext||window.webkitOfflineAudioContext, bin=atob(PROBE), raw=new Uint8Array(bin.length);
       for(var i=0;i<bin.length;i++) raw[i]=bin.charCodeAt(i);
       var p=new C(1,1,22050).decodeAudioData(raw.buffer,function(){},bad); if(p&&p.catch) p.catch(function(){}); }catch(e){ bad(); } })();
+/*__WEB_JS__*/
 __LISTEN__
   /* ---------------- the translation language: one choice for the whole app (html[data-tl] shows its texts) ---------------- */
   function overlay(a,b){ if(Array.isArray(b)) return (a||[]).map(function(x,i){ return i<b.length?overlay(x,b[i]):x; });
@@ -1534,7 +1550,7 @@ PRACTICE = """
 <div class="group" id="s-set-g"><div class="lab">Übersetzung und Tempo</div><div class="sets" id="s-set"></div></div>
 <div class="group"><div class="lab">Fortschritt</div><p class="stat" id="s-stat"></p>
 <div class="backup"><button type="button" id="save-btn">Sichern</button><label for="load-in">Laden</label><input type="file" id="load-in" accept="application/json,.json"></div>
-<p class="stat">Der Fortschritt bleibt in diesem Browser auf diesem Gerät. Mit „Sichern“ nimmst du ihn mit.</p></div>
+<p class="stat">Der Fortschritt bleibt in diesem Browser auf diesem Gerät. Mit „Sichern“ nimmst du ihn mit.</p><!--WEB--></div>
 </details>
 </section>
 """
@@ -1609,11 +1625,12 @@ def compact(value):
 
 
 def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeholder_audio=False,
-          english=True, english_bitrate=None, audio_format="mp3"):
+          english=True, english_bitrate=None, audio_format="mp3", web=False):
     """english: also embed every word's meaning and every example's translation in English (about a quarter more
     audio), so the learner can listen with English; they come after all the target-language audio in the file.
     audio_format: "mp3" (plays everywhere) or "opus" (about a third smaller, needs a browser that decodes Opus);
-    the bitrates default to MP3_RATES or OPUS_RATES, by format."""
+    the bitrates default to MP3_RATES or OPUS_RATES, by format. web: output is a new folder for an HTTPS host (the
+    installable web app of web_app.py) instead of one HTML file."""
     require(audio_format in AUDIO_FORMATS, f"the audio format is one of {', '.join(AUDIO_FORMATS)}")
     bitrate, explain_bitrate, english_bitrate = (given or default for given, default in
                                                  zip((bitrate, explain_bitrate, english_bitrate),
@@ -1787,9 +1804,14 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
     blocks = {}
     for cid, data in payloads.items():
         blocks.setdefault(where[cid], []).append(f"{cid}:{data}")
-    audio_blocks = "".join(f'<script type="text/plain" id="au-{k}">{";".join(v)}</script>\n' for k, v in sorted(blocks.items()))
+    texts = {k: ";".join(v) for k, v in sorted(blocks.items())}
+    files = {k: (web_app.block_name(k, text), text) for k, text in texts.items()} if web else {}   # the web app: one file each
+    audio_blocks = "" if web else "".join(f'<script type="text/plain" id="au-{k}">{text}</script>\n' for k, text in texts.items())
     index = where
-    js = (language.localize(APP_JS.replace("__LISTEN__", LISTEN_JS), ui)
+    app_js = APP_JS.replace("__LISTEN__", LISTEN_JS).replace("/*__WEB_JS__*/", web_app.WEB_JS if web else "")
+    js = (language.localize(app_js, ui)
+          .replace("__WEB__", json.dumps({"blocks": {k: name for k, (name, _) in files.items()}}, separators=(",", ":"))
+                   if web else "null")
           .replace("__INDEX__", json.dumps(index, separators=(",", ":")))
           .replace("__SEQUENCES__", compact(sequences))
           .replace("__EXAMPLES__", compact(examples))
@@ -1812,6 +1834,8 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
     frame = (language.localize(FRAME, ui).replace("__OPTIONS__", options_html)
              .replace("__HEAR_TAB__", language.localize(HEAR_TAB, ui) if audio else "")
              .replace("<!--SUBEND-->", EARLY_BAR.replace("__KEY__", config["key"]), 1))
+    if web:                                           # in the sticky tab bar: seen wherever the page is
+        frame = frame.replace("</nav>", web_app.WEB_BAR + "</nav>", 1)
     hear = language.localize(HEAR, ui).replace("__LANG__", prof["code"]) if audio else ""
     early = EARLY_JS.replace("__KEY__", config["key"]).replace("__FIRST__", course["units"][0]["id"]).replace("__TLS__", json.dumps(langs))
     first = ('<div class="tl-first" id="tl-first" hidden><b>' + html.escape(ui.get("Übersetzung", "Übersetzung")) + '</b><span>'
@@ -1825,8 +1849,8 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="study-pack-app" content="course v2">
 <title>{html.escape(course['title'])}</title>
-<style>{css}{AUDIO_CSS}{APP_CSS}{rtl}{tl_css}</style>
-{early}
+<style>{css}{AUDIO_CSS}{APP_CSS}{web_app.WEB_CSS if web else ""}{rtl}{tl_css}</style>
+{web_app.head_links() + chr(10) if web else ""}{early}
 </head>
 <body><main class="wrap">
 {notice}{frame}
@@ -1836,7 +1860,7 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
 {''.join(sections)}
 </div>
 {hear}
-{language.localize(PRACTICE, ui)}
+{language.localize(PRACTICE.replace("<!--WEB-->", web_app.WEB_SETTINGS if web else ""), ui)}
 {language.localize(GAMES, ui)}
 {language.localize(LISTEN_HTML, ui)}
 </main>
@@ -1849,6 +1873,9 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
     for term in course.get("private_terms", []):
         require(not exact_term(visible, term), f"the app names the private source term {term!r}")
     output = Path(output)
+    if web:
+        site = web_app.write_site(output, doc, files, title=course["title"], lang=prof["code"], key=config["key"])
+        return {"cards": len(cards), "clips": len(payloads), **site}
     with output.open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(doc)
     return {"cards": len(cards), "clips": len(payloads), "bytes": output.stat().st_size}
@@ -1857,7 +1884,9 @@ def build(course, output, audio=True, bitrate=None, explain_bitrate=None, placeh
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--course", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--output", type=Path, help="the app as one HTML file (a new versioned name)")
+    parser.add_argument("--web", type=Path, help="the app as an installable web app: a new folder for an HTTPS host, "
+                                                 "with offline use and updates (see web_app.py)")
     parser.add_argument("--no-audio", action="store_true", help="Study, practice and games only, no embedded audio")
     parser.add_argument("--audio-format", choices=AUDIO_FORMATS, default="mp3",
                         help="mp3 (default, plays in every browser) or opus (about a third smaller; Chrome, Firefox, "
@@ -1870,14 +1899,23 @@ def main(argv=None):
     parser.add_argument("--placeholder-audio", action="store_true", help=argparse.SUPPRESS)  # silent buttons, for tests/screenshots
     args = parser.parse_args(argv)
     try:
-        require(not args.output.exists(), "output exists; choose a new versioned filename")
-        require(args.output.suffix.lower() == ".html", "output must be an .html file")
+        require((args.output is None) != (args.web is None), "give either --output FILE.html or --web FOLDER")
+        target = args.output or args.web
+        require(not target.exists(), "output exists; choose a new versioned name")
+        require(args.web is not None or args.output.suffix.lower() == ".html", "output must be an .html file")
         course = load_course(args.course)
-        result = build(course, args.output, audio=not args.no_audio, bitrate=args.bitrate,
+        result = build(course, target, audio=not args.no_audio, bitrate=args.bitrate,
                        explain_bitrate=args.explain_bitrate, placeholder_audio=args.placeholder_audio,
-                       english=not args.no_english, english_bitrate=args.english_bitrate, audio_format=args.audio_format)
-        print(f"WROTE: {args.output} ({result['bytes'] / 1e6:.1f} MB): {len(course['units'])} units, "
-              f"{result['cards']} cards, {result['clips']} embedded clips")
+                       english=not args.no_english, english_bitrate=args.english_bitrate, audio_format=args.audio_format,
+                       web=args.web is not None)
+        if args.web is not None:
+            print(f"WROTE: {target} ({result['files']} files, {result['bytes'] / 1e6:.1f} MB, version {result['version']}): "
+                  f"{len(course['units'])} units, {result['cards']} cards, {result['clips']} clips")
+            for name in result["too_big"]:
+                print(f"WARNING: {name} is over 25 MiB, more than Cloudflare Pages takes for one file")
+        else:
+            print(f"WROTE: {args.output} ({result['bytes'] / 1e6:.1f} MB): {len(course['units'])} units, "
+                  f"{result['cards']} cards, {result['clips']} embedded clips")
         return 0
     except (AudioError, speech.SpeechError, study_pack.PackError, OSError, json.JSONDecodeError,
             subprocess.CalledProcessError, AttributeError) as error:

@@ -239,6 +239,17 @@ Measured with headless Chrome at 6× CPU slowdown, about a mid-range phone, on t
 - **Screen off:** each listening session is joined into one continuous audio track with lock-screen and headphone controls (⏯ ⏮ ⏭), so playback continues with the screen off. The MP3 episodes also work in any music player.
 - **Progress:** stays in one browser on one device. *Sichern* and *Laden* move it between devices, and from the apps of single books into one course app with both.
 
+## The web app (`--web`)
+
+`build_course_app.py --course course.json --web site_v1 --audio-format opus` writes the app as a folder for an HTTPS host instead of one file (`scripts/web_app.py`):
+
+- **`index.html`** is the same app without its sound. The sound is in `audio/au-<block>.<hash>.txt`, one file per block, in the same `id:base64;…` text the single file carries, named by its content: a rebuild keeps the names of unchanged blocks, so an update moves only the changed ones. The app fetches a block when one of its clips is first wanted.
+- **`manifest.webmanifest`** and **`icons/`** (a speech bubble on the app's dark background, drawn by `web_app.py` without an image library): Chrome offers *Install app*, and the app opens from the home screen without the browser's bar.
+- **`sw.js`**, a service worker. On the first visit it keeps every file for offline use: the bar under the tabs shows *Wird für offline gespeichert … %*, then *Offline bereit ✓*. Every later visit is answered from that copy, with or without a network. It looks for a new version when the app opens, when it comes back after half an hour, and every hour; a new version is fetched in the background (a file whose name did not change comes from the old copy), then the bar shows *Neue Version bereit* with *Aktualisieren*. Üben's settings have *Nach Updates suchen*. Progress stays: the same site keeps the same storage. Listening with the screen off and the lock-screen controls work as in Chrome, because the installed app is Chrome.
+- **`login.html`**, **`404.html`**, **`_headers`**, **`robots.txt`** are for a private host. `404.html` matters on Cloudflare Pages: without it, Pages answers every unknown address with `index.html`, so an open path (the icons) would show the whole app. The service worker never answers `login.html`, so opening it reaches the host's login when a session has expired; the app offers *Anmelden* when an update check meets the login. `_headers` sets Cloudflare Pages' cache rules and `noindex`.
+
+**Host it privately** when the course comes from a book: a public site publishes it (see the README's privacy notes). Cloudflare Pages behind Cloudflare Access (a login by an emailed code, free for a few users) works. Allow your own email for the site and its preview addresses, and let `manifest.webmanifest` and `icons/` through without the login (a Bypass rule), so Chrome can make the installed app from them. One file must stay under 25 MiB there; the build warns when one is bigger. `scripts/inspect_games.py` also plays the games of a web app at its address (`http://…`). A local server must send `.js` as JavaScript (Python's `http.server` on Windows sends `text/plain`, and the service worker then does not start).
+
 ## Verify before delivery
 
 1. Run the unit tests (`python -m unittest` in `scripts/`; the speech tests need `pyspellchecker`).

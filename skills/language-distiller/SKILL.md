@@ -160,6 +160,7 @@ python <skill-dir>/scripts/course_audio.py episodes --course course.json --confi
 python <skill-dir>/scripts/course_audio.py episodes --course course.json --confirm-external-tts --kind examples --repeat 2
 python <skill-dir>/scripts/build_course_app.py --course course.json --output Course_Studienpaket_v1.html
 python <skill-dir>/scripts/build_course_app.py --course course.json --output Course_Studienpaket_v2.html --audio-format opus   # a third smaller sound; Chrome, Firefox, Safari 18.4+
+python <skill-dir>/scripts/build_course_app.py --course course.json --web Course_Web_v1 --audio-format opus   # an installable web app for a private HTTPS host: offline use, updates (references/course-app.md)
 ```
 
 All units of a course share one target language. Only reviewed sheets go into the app. Without approval for hosted speech, build with `--no-audio`. The app is the course-level practice surface; it never changes the sheets. Name the course yourself (`"title": "Deutsch B1.1"`), never after the source.

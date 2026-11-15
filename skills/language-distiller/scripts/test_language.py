@@ -12,6 +12,7 @@ import tempfile
 import unittest
 
 import build_course_app
+import web_app
 import course_audio
 import embed_audio
 import language
@@ -208,7 +209,7 @@ class LanguageTests(unittest.TestCase):
 
     def test_every_translated_text_is_still_in_the_app(self):
         sources = "".join(Path(module.__file__).read_text(encoding="utf-8")
-                          for module in (build_course_app, embed_audio, course_audio))
+                          for module in (build_course_app, embed_audio, course_audio, web_app))
         for german in language.UI_EN:
             self.assertRegex(sources, r"""['">]\s*""" + re.escape(german) + r"""\s*['"<]""", f"{german!r} is no longer in the app")
 

@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import zlib
 from unittest import mock
 
 import study_pack as pack
@@ -479,6 +480,77 @@ class CourseAppTests(unittest.TestCase):
         self.assertTrue(clips and not any(c.startswith("T2dn") for c in clips))
         self.assertIn("var PROBE='';", page)                                          # an MP3 app asks no questions
         self.assertNotIn('id="codec-warn"', page)
+
+    def web_site(self, name):
+        course = course_audio.load_course(self.course_path)
+        self.fake_clips(course)
+        out = self.root / name
+        return out, build_course_app.build(course, out, audio_format="opus", web=True)
+
+    def test_the_web_app_is_a_folder_with_its_sound_in_files(self):
+        out, result = self.web_site("site")
+        page = (out / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn('<script type="text/plain"', page)                             # no sound inside the page
+        self.assertIn('<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">', page)
+        self.assertIn('id="web-bar"', page)
+        self.assertIn('id="upd-btn">Nach Updates suchen</button>', page)
+        self.assertIn("navigator.serviceWorker", page)
+        self.assertNotRegex(page, r"https?://")
+        blocks = json.loads(re.search(r"WEB=(\{.*?\}\})", page).group(1))["blocks"]
+        index = json.loads(re.search(r"IDX=(\{.*?\})", page).group(1))
+        self.assertTrue(index)
+        for cid, k in index.items():                                                   # every clip is in its block's file
+            text = (out / blocks[str(k)]).read_text(encoding="utf-8")
+            clips = dict(part.split(":", 1) for part in text.split(";"))
+            self.assertTrue(clips[cid].startswith("T2dn"), cid)                          # an Ogg (Opus) clip
+        for name in blocks.values():
+            self.assertRegex(name, r"^audio/au-\d+\.[0-9a-f]{12}\.txt$")
+        manifest = json.loads((out / "manifest.webmanifest").read_text(encoding="utf-8"))
+        self.assertEqual((manifest["name"], manifest["display"], manifest["start_url"]), ("Test Kurs", "standalone", "./"))
+        for icon in manifest["icons"]:
+            png = (out / icon["src"]).read_bytes()
+            size = int(icon["sizes"].split("x")[0])
+            self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
+            self.assertEqual(int.from_bytes(png[16:20], "big"), size)
+        sw = (out / "sw.js").read_text(encoding="utf-8")
+        listed = json.loads(re.search(r"FILES=(\[.*?\])", sw).group(1))
+        kept = sorted(str(f.relative_to(out)).replace("\\", "/") for f in out.rglob("*") if f.is_file())
+        self.assertEqual(sorted("index.html" if f == "./" else f for f in listed),
+                         [f for f in kept if f not in ("sw.js", "login.html", "404.html", "_headers", "robots.txt")])
+        self.assertNotIn("WEB=", (out / "404.html").read_text(encoding="utf-8"))          # an unknown address never gets the app
+        self.assertEqual(listed[0], "./")                                                # the page as its folder (no /index.html)
+        self.assertIn(f"VERSION='{result['version']}'", sw)
+        self.assertIn("login(\\.html)?", sw)                                            # the login page always reaches the host
+        self.assertEqual(result["too_big"], [])
+        self.assertIn("noindex", (out / "_headers").read_text(encoding="utf-8"))
+
+    def test_a_rebuild_keeps_the_names_of_unchanged_sound(self):
+        first, one = self.web_site("site1")
+        second, two = self.web_site("site2")
+        names = lambda out: sorted(f.name for f in (out / "audio").iterdir())
+        self.assertEqual(names(first), names(second))                                    # nothing to fetch again
+        self.assertEqual(one["version"], two["version"])
+        (self.root / "site1").rename(self.root / "old")
+        with self.assertRaises(FileExistsError):                                         # a web folder is never overwritten
+            build_course_app.build(course_audio.load_course(self.course_path), self.root / "site2", web=True,
+                                   placeholder_audio=True)
+
+    def test_the_single_file_has_no_web_parts(self):
+        out = self.root / "app.html"
+        build_course_app.build(course_audio.load_course(self.course_path), out, audio=True, placeholder_audio=True)
+        page = out.read_text(encoding="utf-8")
+        self.assertIn("WEB=null", page)
+        for part in ('rel="manifest"', 'id="web-bar"', 'id="upd-btn"', "serviceWorker"):
+            self.assertNotIn(part, page)
+
+    def test_the_icon_is_a_valid_png_in_both_shapes(self):
+        import web_app
+        for maskable in (False, True):
+            png = web_app.icon_png(48, maskable=maskable)
+            self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
+            rows = zlib.decompress(png[png.index(b"IDAT") + 4:png.index(b"IEND") - 8])
+            corner = rows[1:5]                                                         # the top-left pixel, RGBA
+            self.assertEqual(corner[3], 255 if maskable else 0)                         # rounded corners are see-through
 
     def test_the_opus_notice_is_translated_for_other_languages(self):
         for code in ("es", "ar", "ja"):

@@ -671,7 +671,7 @@ LISTEN_JS = r"""
   var asked=0;
   function sound(data){ player.loop=false; player.src=(data.slice(0,4)==='T2dn'?'data:audio/ogg;base64,':'data:audio/mpeg;base64,')+data; tempo(); go(); }   /* T2dn: base64 of "Ogg", an Opus clip */
   function clip(id){ var data=need(id), mine=++asked; if(data){ sound(data); return true; }
-    if(!id||d.readyState!=='loading') return false;
+    if(!id||d.readyState!=='loading'&&!lazy()) return false;
     whenAudio([id]).then(function(){ var later=need(id); if(mine===asked&&!R&&later) sound(later); }); return true; }
   function attach(r,play){ player.loop=!r.o.laps; player.src=r.t.url; tempo(); r.last=r.pos;
     player.onloadedmetadata=function(){ player.onloadedmetadata=null; if(R!==r) return; player.currentTime=r.pos; tempo(); if(play&&!r.paused) go(); }; }
@@ -859,6 +859,7 @@ AUDIO_JS = r"""
   function save(k,v){ try{ localStorage.setItem('study-sheet:'+k,JSON.stringify(v)); }catch(e){} }
   function need(id){ return P[id]||''; }
   function whenAudio(){ return Promise.resolve(); }                  /* a sheet carries its clips in this script */
+  function lazy(){ return false; }                                   /* clips are fetched on demand only in the web app */
   function heard(){}                                                 /* a sheet shows what plays on the sheet itself */
   function listening(){}
 __LISTEN__

@@ -242,6 +242,13 @@ UI_EN = {
     "So übst du Sprechen: erst anhören, dann Satz für Satz nachsprechen, dann eine Rolle übernehmen – zuerst mit Text, dann ohne.":
         "How to practise speaking: listen first, then say each line after the voice, then take a role – first with the text, then without.",
     "Sprechen üben": "Practise speaking", "nachsprechen und eine Rolle sprechen": "say it after the voice and speak a role",
+    # the web app (build_course_app.py --web): offline copy and updates
+    "Nach Updates suchen": "Check for updates", "Neue Version bereit.": "A new version is ready.", "Aktualisieren": "Update",
+    "Wird aktualisiert …": "Updating …", "Für Updates bitte einmal anmelden.": "To get updates, please sign in once.",
+    "Anmelden": "Sign in", "Wird für offline gespeichert …": "Saving for offline use …", "Offline bereit ✓": "Ready offline ✓",
+    "Suche …": "Checking …", "Neue Version wird geladen …": "Loading the new version …", "Du hast die neueste Version.": "You have the newest version.",
+    "Bitte einmal anmelden (oben).": "Please sign in once (at the top).", "Kein Internet. Später nochmal.": "No internet. Try again later.",
+    "Gerade nicht erreichbar. Später nochmal.": "Not reachable right now. Try again later.",
 }
 
 

@@ -25,8 +25,10 @@
   const GT = (script.match(/GT=(\{.*?\}), G0=G/s) || [])[1];
   if (code !== 'en' && GT && parsed(GT)[code]) G = overlay(G, parsed(GT)[code]);
   const clipOf = {};                                   /* audio payload → clip id, to know which sentence Hör-Bingo plays */
-  $$('script[type="text/plain"][id^="au-"]').forEach(block => block.textContent.split(';').forEach(pair => {
-    const at = pair.indexOf(':'); if (at > 0) clipOf[pair.slice(at + 1)] = pair.slice(0, at); }));
+  const learn = text => text.split(';').forEach(pair => { const at = pair.indexOf(':'); if (at > 0) clipOf[pair.slice(at + 1)] = pair.slice(0, at); });
+  $$('script[type="text/plain"][id^="au-"]').forEach(block => learn(block.textContent));
+  const web = script.match(/WEB=(\{"blocks":\{.*?\}\})/);             /* a web app: its sound is in files beside the page */
+  if (web) for (const name of Object.values(JSON.parse(web[1]).blocks)) learn(await (await fetch(name)).text());
   let played = '';
   const AUDIO_SRC = /^data:audio\/(?:mpeg|ogg);base64,/;    /* how the player plays a single clip: MP3, or Ogg in an Opus app */
   const play = HTMLMediaElement.prototype.play;

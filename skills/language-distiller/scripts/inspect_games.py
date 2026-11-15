@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Play every game of a built study app in headless Chrome at phone size, the way a hurried thumb does.
 
-usage: inspect_games.py STUDY_APP.html [--units L01,L02] [--answers 10] [--language ar] [--browser PATH] [--json]
+usage: inspect_games.py STUDY_APP.html|URL [--units L01,L02] [--answers 10] [--language ar] [--browser PATH] [--json]
 
 It opens the app at 375 x 812 with touch, runs check_games.js on every unit (or the --units given) and reports a
 right answer shown as wrong, a Hör-Bingo call with two right answers, a Satzbau sentence that makes no sense, two
@@ -105,7 +105,7 @@ async def inspect(app, browser, units=None, answers=10, language=None):
             await call("Page.enable", session=page)
             await call("Emulation.setDeviceMetricsOverride", PHONE, page)
             await call("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5}, page)
-            await call("Page.navigate", {"url": Path(app).resolve().as_uri()}, page)
+            await call("Page.navigate", {"url": address(app)}, page)
             await within(120, loaded.wait(), "the app did not finish loading")    # a course with audio is 40-130 MB
             if language:                       # the app's own choice of translation language: click the pill until it is shown
                 switched = await call("Runtime.evaluate", {"expression": (
@@ -143,9 +143,14 @@ def summary(result):
     return "\n".join(lines)
 
 
+def address(app):
+    """An app file as a file:// address; a web app (build_course_app.py --web) on a server as it is."""
+    return str(app) if str(app).startswith(("http://", "https://")) else Path(app).resolve().as_uri()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("app", type=Path)
+    parser.add_argument("app", help="the app file, or the address of a web app (http://…)")
     parser.add_argument("--units", help="comma-separated unit ids (default: every unit)")
     parser.add_argument("--answers", type=int, default=10, help="answers to give in the timed article game")
     parser.add_argument("--language", help="translation language to play in (en, ar, …; default: the app's own choice)")
@@ -153,7 +158,7 @@ def main(argv=None):
     parser.add_argument("--json", action="store_true", help="print the full report as JSON")
     args = parser.parse_args(argv)
     try:
-        if not args.app.is_file():
+        if not args.app.startswith(("http://", "https://")) and not Path(args.app).is_file():
             raise InspectError(f"no such app: {args.app}")
         result = asyncio.run(inspect(args.app, find_browser(args.browser),
                                      args.units.split(",") if args.units else None, args.answers, args.language))
