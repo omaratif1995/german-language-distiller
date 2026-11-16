@@ -249,6 +249,8 @@ UI_EN = {
     "Suche …": "Checking …", "Neue Version wird geladen …": "Loading the new version …", "Du hast die neueste Version.": "You have the newest version.",
     "Bitte einmal anmelden (oben).": "Please sign in once (at the top).", "Kein Internet. Später nochmal.": "No internet. Try again later.",
     "Gerade nicht erreichbar. Später nochmal.": "Not reachable right now. Try again later.",
+    "Das Speichern wurde unterbrochen.": "Saving was interrupted.", "Erneut versuchen": "Try again",
+    "Nicht genug Speicherplatz auf dem Handy.": "Not enough storage space on the phone.",
 }
 
 

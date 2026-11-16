@@ -117,6 +117,8 @@ WEB_JS = """
     sw.addEventListener('controllerchange',function(){ if(had&&!reloading){ reloading=true; location.reload(); } had=true; });
     sw.addEventListener('message',function(e){ var m=e.data||{};
       if(m.t==='progress'&&!sw.controller) show('Wird für offline gespeichert … '+Math.floor(100*m.done/m.total)+' %');
+      if(m.t==='fail'&&!sw.controller) show(m.quota?'Nicht genug Speicherplatz auf dem Handy.':'Das Speichern wurde unterbrochen.',
+        m.quota?'':'Erneut versuchen',function(){ location.reload(); });          /* a retry resumes where it stopped */
       if(m.t==='done'&&!had){ show('Offline bereit ✓'); setTimeout(function(){ if(msg.textContent==='Offline bereit ✓') show(''); },5000); } });
     sw.register('sw.js',{updateViaCache:'none'}).then(function(r){ reg=r;
       if(r.waiting&&sw.controller) ready(r.waiting); watch(r.installing);
@@ -141,7 +143,7 @@ var VERSION='__VERSION__', PREFIX='__PREFIX__', FILES=__FILES__, CACHE=PREFIX+VE
 function abs(f){ return new URL(f,self.registration.scope).href; }
 function tell(m){ return self.clients.matchAll({includeUncontrolled:true}).then(function(cs){ cs.forEach(function(c){ c.postMessage(m); }); }); }
 function mine(n){ return n!==CACHE&&n.indexOf(PREFIX)===0; }
-self.addEventListener('install',function(e){ e.waitUntil((async function(){
+self.addEventListener('install',function(e){ e.waitUntil((async function(){ try{
   var cache=await caches.open(CACHE), old=(await caches.keys()).filter(mine), done=0;
   for(var i=0;i<FILES.length;i++){ var f=FILES[i], url=abs(f), hit=null;
     if(!(await cache.match(url))){                                    /* not there yet (an install can resume) */
@@ -151,7 +153,7 @@ self.addEventListener('install',function(e){ e.waitUntil((async function(){
       await cache.put(url,hit); }
     done++;
     if(done%4===0||done===FILES.length) await tell({t:'progress',done:done,total:FILES.length}); }
-  await tell({t:'done'}); })()); });
+  await tell({t:'done'}); }catch(err){ await tell({t:'fail',quota:!!err&&err.name==='QuotaExceededError'}); throw err; } })()); });
 self.addEventListener('activate',function(e){ e.waitUntil(caches.keys().then(function(ns){ return Promise.all(ns.filter(mine).map(function(n){ return caches.delete(n); })); })
   .then(function(){ return self.clients.claim(); })); });
 self.addEventListener('message',function(e){ if(e.data==='skip') self.skipWaiting(); });

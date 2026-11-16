@@ -495,6 +495,8 @@ class CourseAppTests(unittest.TestCase):
         self.assertIn('id="web-bar"', page)
         self.assertIn('id="upd-btn">Nach Updates suchen</button>', page)
         self.assertIn("navigator.serviceWorker", page)
+        self.assertIn("m.t==='fail'", page)                                              # an interrupted offline copy says so ...
+        self.assertIn("'Erneut versuchen'", page)                                        # ... and offers a retry
         self.assertNotRegex(page, r"https?://")
         blocks = json.loads(re.search(r"WEB=(\{.*?\}\})", page).group(1))["blocks"]
         index = json.loads(re.search(r"IDX=(\{.*?\})", page).group(1))
@@ -520,6 +522,7 @@ class CourseAppTests(unittest.TestCase):
         self.assertNotIn("WEB=", (out / "404.html").read_text(encoding="utf-8"))          # an unknown address never gets the app
         self.assertEqual(listed[0], "./")                                                # the page as its folder (no /index.html)
         self.assertIn(f"VERSION='{result['version']}'", sw)
+        self.assertIn("t:'fail'", sw)                                                    # the worker tells the page when its install fails
         self.assertIn("login(\\.html)?", sw)                                            # the login page always reaches the host
         self.assertEqual(result["too_big"], [])
         self.assertIn("noindex", (out / "_headers").read_text(encoding="utf-8"))
